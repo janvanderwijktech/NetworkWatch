@@ -1,4 +1,4 @@
-# NetworkWatch 1.4 — Python netwerkmonitor voor Linux
+# NetworkWatch 1.5 — Python netwerkmonitor voor Linux
 
 Een zelfstandige, GUI-gebaseerde toepassing geïnspireerd door SoftPerfect WiFi Guard,
 met eigen broncode en eigen interface. Geen SoftPerfect-code of -assets.
@@ -281,12 +281,12 @@ profiel, ongeacht het actieve zoekfilter, maar geen webhooktokens.
 python3 -m unittest discover -s tests -v
 ```
 
-De meegeleverde 41 tests controleren onder andere MAC-identiteit bij IP-wijziging,
+De meegeleverde 52 tests controleren onder andere MAC-identiteit bij IP-wijziging,
 herstart met opgeslagen staat, offline-drempel, herhaalde meldingen, netwerkprofielen,
 scanvalidatie, gatewaycontrole, transactie-rollback en HTTP-verzoeken naar een lokale
 testserver (JSON, form, redirects, outbox en herpoging).
 
-Bij oplevering: alle 41 tests geslaagd en Python-bestanden gecompileerd.
+Bij oplevering: alle 52 tests geslaagd en Python-bestanden gecompileerd.
 ARP-scans zijn in tests gesimuleerd; er is niet op jouw netwerk gescand.
 De grafische interface is in deze bouwomgeving niet interactief getest omdat er
 geen grafische displayserver beschikbaar is. Test de eerste keer op jouw Linux-desktop.
@@ -454,3 +454,54 @@ Linux-desktop; jouw netwerk is niet gescand.
 
 Achtergrond bij het verschil tussen service- en host-OS:
 https://nmap.org/book/vscan-fileformat.html
+
+## Update 1.5: rechtsklikmenu voor verbindingen
+
+Rechtsklik op een apparaat in het hoofdscherm. Het menu wordt opgebouwd uit de
+bevestigd open **TCP**-poorten van de laatste poortmeting:
+
+- 22: SSH in een terminal; je kunt eerst een gebruikersnaam invullen.
+- 23: Telnet in een terminal.
+- 80 en 8080: HTTP in de standaardbrowser.
+- 443 en 8443: HTTPS in de standaardbrowser.
+- 21: FTP in een terminal.
+- 445: SMB-shares via de ingestelde bestandsbeheerder (`smb://`).
+- 5900: VNC via `vncviewer` (TigerVNC/TightVNC-compatibele adresnotatie).
+
+IP-adres kopiëren, Poortdetails en Apparaat bewerken zijn ook beschikbaar.
+Andere poorten blijven in Poortdetails zichtbaar maar hebben geen snelactie.
+Onzekere UDP-poorten of gesloten poorten leveren geen verbindingsactie op.
+Poortnummers bepalen de actie; er is geen garantie dat op een standaardpoort
+inderdaad het verwachte protocol draait.
+
+Het menu vermeldt het tijdstip van de poortmeting. Voor een offline/gemiste host
+staat erbij dat een eerdere meting wordt gebruikt. Je kunt alsnog proberen te
+verbinden, bijvoorbeeld wanneer een host inmiddels weer online is. Er wordt bij
+rechtsklikken niet opnieuw gescand. Er start pas een client wanneer je een actie
+kiest; Annuleren in het SSH-dialoogvenster start niets. Rechtsklikken verandert de
+vertrouwde status niet.
+
+SSH/Telnet/FTP gebruiken lokale clients `ssh`, `telnet` en `ftp`. Voor de terminal
+probeert de app achtereenvolgens kitty, alacritty, foot, gnome-terminal, konsole,
+xfce4-terminal, xterm en x-terminal-emulator. Het terminalvenster blijft na afloop
+open totdat je op Enter drukt, zodat foutmeldingen leesbaar zijn.
+
+Web/SMB-acties gebruiken `xdg-open`. Voor SMB moet je desktop een bestandsbeheerder
+met SMB-ondersteuning hebben. VNC vereist `vncviewer`. Als een client of terminal
+ontbreekt, toont de app een melding; er worden geen pakketten automatisch geïnstalleerd.
+Een gestart proces bewijst nog niet dat de verbinding of authenticatie slaagt.
+
+Wachtwoorden worden uitsluitend in de client ingevoerd en niet in NetworkWatch
+opgeslagen. SSH-hostkeycontrole en HTTPS-certificaatcontrole blijven bij de client;
+de app schakelt ze niet uit. Telnet en gewone FTP zijn onversleutelde protocollen.
+Opdrachten worden zonder shell opgebouwd uit vaste argumenten en een gecontroleerd
+IP-adres; apparaatnamen of banners worden niet als commando uitgevoerd.
+
+Update: sluit NetworkWatch af, haal de nieuwe versie op en start
+`python3 networkwatch.py`. Het nieuwe `host_actions.py` moet aanwezig zijn.
+Bovenaan staat NetworkWatch 1.5; bestaande apparaten en instellingen blijven behouden.
+
+Validatie: 52 tests geslaagd, inclusief poortselectie, argumentopbouw, ontbrekende
+clients, SSH-annulering en het rechtsklikmenu. Tijdens tests zijn geen browsers,
+terminals of verbindingen naar jouw apparaten gestart. De daadwerkelijke GUI en
+externe clients moeten op jouw desktop worden getest.
