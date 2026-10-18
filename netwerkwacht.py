@@ -12,8 +12,9 @@ import subprocess
 import threading
 import time
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
 import uuid
+from host_actions import available_actions, launch_action
 from ports import TCP_PORTS, UDP_PORTS, decode_results, port_summary
 
 from core import (Store, Dispatcher, default_config, interfaces, now, post,
@@ -23,7 +24,7 @@ from core import (Store, Dispatcher, default_config, interfaces, now, post,
 class App(tk.Tk):
     def __init__(self, folder):
         super().__init__()
-        self.title('NetworkWatch 1.4 • Linux netwerkmonitor')
+        self.title('NetworkWatch 1.5 • Linux netwerkmonitor')
         self.geometry('1250x760')
         self.minsize(900, 550)
         self.folder = folder
@@ -64,7 +65,7 @@ class App(tk.Tk):
         style.configure('Title.TLabel', font=('Sans', 23, 'bold'))
         outer = ttk.Frame(self, padding=18)
         outer.pack(fill='both', expand=True)
-        ttk.Label(outer, text='NetworkWatch 1.4', style='Title.TLabel').pack(anchor='w')
+        ttk.Label(outer, text='NetworkWatch 1.5', style='Title.TLabel').pack(anchor='w')
         self.summary = tk.StringVar()
         ttk.Label(outer, textvariable=self.summary).pack(anchor='w', pady=(4, 14))
         bar = ttk.Frame(outer)
@@ -119,8 +120,9 @@ class App(tk.Tk):
         self.tree.bind('<Button-1>', self.on_device_click)
         self.tree.bind('<Double-1>', self.on_device_double_click)
         self.tree.bind('<space>', self.on_device_space)
+        self.tree.bind('<Button-3>', self.host_menu)
         ttk.Label(devices, text='Klik op het vakje in Bekend om een apparaat te herkennen. '
-                  'Spatie wisselt de geselecteerde rij; dubbelklik elders voor bewerken.').pack(anchor='w', pady=(8, 0))
+                  'Rechtsklik voor verbindingen; spatie wisselt de geselecteerde rij.').pack(anchor='w', pady=(8, 0))
         log = ttk.Frame(self.tabs, padding=8)
         self.tabs.add(log, text='Gebeurtenissen & HTTP-status')
         self.events = ttk.Treeview(log, columns=('time', 'kind', 'message', 'http'), show='headings')
@@ -140,6 +142,68 @@ class App(tk.Tk):
         ttk.Label(footer, textvariable=self.countdown).pack(anchor='w', pady=4)
         self.progress = ttk.Progressbar(footer, mode='indeterminate')
         self.progress.pack(fill='x')
+
+    def host_menu(self, event):
+        if self.tree.identify_region(event.x, event.y) not in ('cell', 'tree'):
+            return
+        mac = self.tree.identify_row(event.y)
+        if not mac:
+            return
+        self.tree.selection_set(mac)
+        self.tree.focus(mac)
+        self.tree.focus_set()
+        host = next((h for h in self.store.hosts(scope(self.config)) if h['mac'] == mac), None)
+        if host is None:
+            return
+        if getattr(self, '_host_popup', None) is not None:
+            self._host_popup.destroy()
+        menu = self._host_popup = tk.Menu(self, tearoff=False)
+        menu.add_command(label=f"{host['label'] or host['hostname'] or host['ip']} — {host['ip']}", state='disabled')
+        menu.add_command(label='Poortmeting: ' + (host['port_checked'] or 'nog niet uitgevoerd'), state='disabled')
+        if not host['online'] or host['misses']:
+            menu.add_command(label='Niet gezien in laatste scan; acties gebruiken eerdere poortmeting', state='disabled')
+        menu.add_separator()
+        actions = available_actions(host)
+        for port, label, kind in actions:
+            menu.add_command(label=f'{label} ({port}/tcp)',
+                command=lambda p=port, k=kind, h=dict(host): self.open_host_action(h, p, k))
+        if not actions:
+            menu.add_command(label='Geen open poorten met een beschikbare snelactie', state='disabled')
+        menu.add_separator()
+        menu.add_command(label='IP-adres kopiëren', command=lambda: self.copy_host_ip(host['ip']))
+        menu.add_command(label='Poortdetails', command=self.port_details)
+        menu.add_command(label='Apparaat bewerken', command=self.edit_host)
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+        return 'break'
+
+    def copy_host_ip(self, ip):
+        self.clipboard_clear()
+        self.clipboard_append(ip)
+        self.status.set(f'IP-adres gekopieerd: {ip}')
+
+    def open_host_action(self, host, port, kind):
+        username = ''
+        if kind == 'ssh':
+            username = simpledialog.askstring('SSH-sessie',
+                f"Verbinden met {host['ip']}:{port}\nGebruikersnaam (leeg = standaard van SSH):", parent=self)
+            if username is None:
+                return
+        try:
+            process = launch_action(host['ip'], port, kind, username)
+        except (ValueError, OSError) as exc:
+            messagebox.showerror('Verbinding starten', str(exc), parent=self)
+            return
+        self.status.set(f'Startopdracht verstuurd: {kind.upper()} naar {host["ip"]}:{port}')
+        def check_started():
+            code = process.poll()
+            if code is not None and code != 0:
+                messagebox.showerror('Verbinding starten',
+                    f'De lokale client/opener stopte met exitcode {code}. '
+                    'Controleer of een geschikte applicatie is geïnstalleerd en ingesteld.', parent=self)
+        self.after(1200, check_started)
 
     def checkbox_image(self, checked):
         image = tk.PhotoImage(master=self, width=22, height=22)
@@ -296,7 +360,7 @@ class App(tk.Tk):
                         if alerts and self.config['sound']:
                             self.bell()
                         if alerts:
-                            self.title(f'({len(alerts)} meldingen) NetworkWatch 1.4')
+                            self.title(f'({len(alerts)} meldingen) NetworkWatch 1.5')
                             if shutil.which('notify-send'):
                                 def notify(text='\n'.join(alerts[:5])):
                                     try:
