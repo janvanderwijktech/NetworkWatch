@@ -23,7 +23,7 @@ from core import (Store, Dispatcher, default_config, interfaces, now, post,
 class App(tk.Tk):
     def __init__(self, folder):
         super().__init__()
-        self.title('NetworkWatch 1.3 • Linux netwerkmonitor')
+        self.title('NetworkWatch 1.4 • Linux netwerkmonitor')
         self.geometry('1250x760')
         self.minsize(900, 550)
         self.folder = folder
@@ -64,7 +64,7 @@ class App(tk.Tk):
         style.configure('Title.TLabel', font=('Sans', 23, 'bold'))
         outer = ttk.Frame(self, padding=18)
         outer.pack(fill='both', expand=True)
-        ttk.Label(outer, text='NetworkWatch 1.3', style='Title.TLabel').pack(anchor='w')
+        ttk.Label(outer, text='NetworkWatch 1.4', style='Title.TLabel').pack(anchor='w')
         self.summary = tk.StringVar()
         ttk.Label(outer, textvariable=self.summary).pack(anchor='w', pady=(4, 14))
         bar = ttk.Frame(outer)
@@ -91,9 +91,9 @@ class App(tk.Tk):
         ttk.Combobox(filters, textvariable=self.filter, state='readonly', width=23,
                      values=['Alle apparaten', 'Onbekend', 'Online', 'Offline', 'Offlinebewaking']).pack(side='left')
         self.filter.trace_add('write', lambda *_: self.refresh())
-        columns = ('state', 'monitor', 'ip', 'port_open', 'udp_uncertain', 'port_checked', 'mac', 'label', 'hostname', 'vendor', 'last_seen')
-        labels = ('Status', 'Bewaken', 'IP-adres', 'Open poorten (bevestigd)', 'UDP onzeker', 'Poortcheck (UTC)', 'MAC-adres', 'Eigen naam', 'Hostnaam', 'Fabrikant', 'Laatst gezien (UTC)')
-        widths = (125, 70, 120, 390, 180, 180, 150, 140, 150, 150, 175)
+        columns = ('state', 'monitor', 'ip', 'os_guess', 'port_open', 'udp_uncertain', 'port_checked', 'mac', 'label', 'hostname', 'vendor', 'last_seen')
+        labels = ('Status', 'Bewaken', 'IP-adres', 'Vermoedelijk OS', 'Open poorten (bevestigd)', 'UDP onzeker', 'Poortcheck (UTC)', 'MAC-adres', 'Eigen naam', 'Hostnaam', 'Fabrikant', 'Laatst gezien (UTC)')
+        widths = (125, 70, 120, 190, 390, 180, 180, 150, 140, 150, 150, 175)
         frame = ttk.Frame(devices)
         frame.pack(fill='both', expand=True)
         self.tree = ttk.Treeview(frame, columns=columns, show='tree headings', selectmode='browse')
@@ -176,7 +176,7 @@ class App(tk.Tk):
             mac = self.tree.identify_row(event.y)
             if mac:
                 self.tree.selection_set(mac)
-                if self.tree.identify_column(event.x) in ('#4', '#5', '#6'):
+                if self.tree.identify_column(event.x) in ('#5', '#6', '#7'):
                     self.port_details()
                 else:
                     self.edit_host()
@@ -236,7 +236,9 @@ class App(tk.Tk):
                 opened = 'Laatste: ' + opened
             self.tree.insert('', 'end', iid=h['mac'], tags=(tag,),
                 image=self.known_images[bool(h['known'])], values=(state,
-                'Ja' if h['monitor'] else 'Nee', h['ip'], opened, uncertain, h['port_checked'], h['mac'],
+                'Ja' if h['monitor'] else 'Nee', h['ip'],
+                ('Laatste: ' if h['os_checked'] and (not h['online'] or h['misses']) else '')
+                + (h['os_guess'] or 'Nog niet gecontroleerd'), opened, uncertain, h['port_checked'], h['mac'],
                 h['label'], h['hostname'], h['vendor'], h['last_seen']))
         if selected and self.tree.exists(selected[0]):
             self.tree.selection_set(selected)
@@ -264,7 +266,7 @@ class App(tk.Tk):
         self.scan_button.state(['disabled'])
         self.settings_button.state(['disabled'])
         self.progress.start(12)
-        self.status.set('Netwerkscan bezig: ARP-detectie, hostnamen en (indien aan) TCP/UDP-poortcontrole…')
+        self.status.set('Netwerkscan bezig: ARP-detectie, hostnamen en (indien aan) TCP/UDP-poortcontrole en OS-herkenning…')
         config = json.loads(json.dumps(self.config))
         def worker():
             try:
@@ -294,7 +296,7 @@ class App(tk.Tk):
                         if alerts and self.config['sound']:
                             self.bell()
                         if alerts:
-                            self.title(f'({len(alerts)} meldingen) NetworkWatch 1.3')
+                            self.title(f'({len(alerts)} meldingen) NetworkWatch 1.4')
                             if shutil.which('notify-send'):
                                 def notify(text='\n'.join(alerts[:5])):
                                     try:
@@ -366,6 +368,9 @@ class App(tk.Tk):
         form = ttk.Frame(win, padding=20)
         form.pack(fill='both', expand=True)
         ttk.Label(form, text=f"{h['ip']}   •   {h['mac']}\n{h['hostname']}\n{h['vendor']}").pack(anchor='w')
+        ttk.Label(form, wraplength=560, text=f"Vermoedelijk OS: {h['os_guess'] or 'Nog niet gecontroleerd'}\n"
+            f"Controle (UTC): {h['os_checked'] or '—'}\n{h['os_evidence']}\n"
+            'Netwerkindicaties kunnen ook van een container of proxy afkomstig zijn.').pack(anchor='w', pady=10)
         ttk.Label(form, text='Eigen naam / opmerking:').pack(anchor='w', pady=(14, 3))
         label = tk.StringVar(value=h['label'])
         ttk.Entry(form, textvariable=label, width=50).pack(fill='x')
@@ -446,6 +451,25 @@ class App(tk.Tk):
             'Servicenamen zijn gebruikelijke poortnamen, geen vastgestelde software.\n\n'
             'Poortdetails toont de status van elke gecontroleerde poort. Bestaande resultaten blijven '
             'zichtbaar met hun tijdstip als je poortcontrole uitschakelt.').pack(anchor='w', pady=20)
+        os_page = ttk.Frame(tabs, padding=16)
+        tabs.add(os_page, text='OS-herkenning')
+        fields['os_scan'] = tk.BooleanVar(value=self.config.get('os_scan', True))
+        ttk.Checkbutton(os_page, text='Probeer het besturingssysteem te herkennen',
+                        variable=fields['os_scan']).pack(anchor='w', pady=8)
+        ttk.Label(os_page, wraplength=700, text='Zoekt naar OS-aanwijzingen in SSH- en FTP-banners '
+            '(22/21) en de HTTP-serverheader (80/8080). Er worden geen inlogpogingen gedaan. '
+            'Voor HTTP wordt HEAD / opgevraagd. HTTPS en andere poorten worden niet gebruikt.\n\n'
+            'Open poorten of fabrikanten alleen leveren geen OS-gok op. Zonder aanwijzing staat er '
+            'Onbekend. Verschillende OS-aanwijzingen geven Onzeker (tegenstrijdig). '
+            'De eigen computer wordt lokaal herkend.\n\n'
+            'Dit is beperkte servicebannerherkenning, geen Nmap TCP/IP-fingerprinting. '
+            'Banners kunnen aangepast zijn of uit een container/proxy komen. Het resultaat '
+            'bevestigt dus niet het OS van de fysieke host.\n\n'
+            'Bij ingeschakelde poortcontrole worden alleen de relevante open poorten benaderd. '
+            'Zonder poortcontrole worden de vier poorten rechtstreeks geprobeerd. '
+            'De timeout van Poortcontrole wordt gebruikt.\n\n'
+            'Via Apparaat bewerken zie je de aanwijzing en het tijdstip. Bij uitzetten blijven '
+            'eerdere resultaten bewaard met hun oude tijdstip.').pack(anchor='w', pady=12)
         trigger_widgets = {}
         for key, label in [('unknown', 'Onbekend apparaat'), ('offline', 'Bekend apparaat offline')]:
             page = ttk.Frame(tabs, padding=14)
