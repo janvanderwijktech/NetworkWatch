@@ -95,7 +95,7 @@ class ScannerTests(unittest.TestCase):
 
     def config(self):
         c = core.default_config()
-        c.update(interface='eth0', network='192.168.2.0/24', dns=False, port_scan=False)
+        c.update(interface='eth0', network='192.168.2.0/24', dns=False, port_scan=False, os_scan=False)
         return c
 
     def local(self):
