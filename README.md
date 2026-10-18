@@ -1,4 +1,4 @@
-# NetworkWatch 1.3 — Python netwerkmonitor voor Linux
+# NetworkWatch 1.4 — Python netwerkmonitor voor Linux
 
 Een zelfstandige, GUI-gebaseerde toepassing geïnspireerd door SoftPerfect WiFi Guard,
 met eigen broncode en eigen interface. Geen SoftPerfect-code of -assets.
@@ -281,12 +281,12 @@ profiel, ongeacht het actieve zoekfilter, maar geen webhooktokens.
 python3 -m unittest discover -s tests -v
 ```
 
-De meegeleverde 31 tests controleren onder andere MAC-identiteit bij IP-wijziging,
+De meegeleverde 41 tests controleren onder andere MAC-identiteit bij IP-wijziging,
 herstart met opgeslagen staat, offline-drempel, herhaalde meldingen, netwerkprofielen,
 scanvalidatie, gatewaycontrole, transactie-rollback en HTTP-verzoeken naar een lokale
 testserver (JSON, form, redirects, outbox en herpoging).
 
-Bij oplevering: alle 31 tests geslaagd en Python-bestanden gecompileerd.
+Bij oplevering: alle 41 tests geslaagd en Python-bestanden gecompileerd.
 ARP-scans zijn in tests gesimuleerd; er is niet op jouw netwerk gescand.
 De grafische interface is in deze bouwomgeving niet interactief getest omdat er
 geen grafische displayserver beschikbaar is. Test de eerste keer op jouw Linux-desktop.
@@ -402,3 +402,55 @@ Validatie: 31 tests geslaagd. Nieuwe tests gebruiken echte lokale TCP- en UDP-so
 voor open, gesloten en geen-antwoord-situaties. Ook de exacte poortlijst, UDP-uitstand,
 databasemigratie, opgeslagen poortresultaten en IP-wijzigingen zijn gecontroleerd.
 De GUI is niet op een grafische desktop getest; jouw netwerk is niet benaderd.
+
+## Update 1.4: vermoedelijk besturingssysteem per host
+
+In de apparatenlijst staat na het IP-adres de kolom **Vermoedelijk OS**.
+Voorbeelden: `Linux (Ubuntu)`, `Linux (Debian)`, `Windows`, `FreeBSD`,
+`Darwin/macOS`, `Onbekend` of `Onzeker (tegenstrijdig)`.
+De eigen computer wordt lokaal herkend, bijvoorbeeld `Linux (lokaal)`.
+
+Deze versie gebruikt **beperkte servicebannerherkenning**, geen volledige
+TCP/IP-fingerprinting met Nmap. Alleen expliciete OS-aanwijzingen in SSH/FTP-banners
+(poorten 22/21) en HTTP-serverheaders (80/8080) tellen mee. HTTP gebruikt een HEAD
+op `/`; er worden geen inlogpogingen gedaan. HTTPS, SMB en andere poorten worden
+niet gebruikt voor OS-herkenning. Alleen een open poort 445 of een generieke
+OpenSSH-, nginx- of Apache-banner is onvoldoende om Windows of Linux te claimen.
+
+Een netwerkresultaat is altijd een **indicatie**: een service kan in een container,
+WSL-omgeving of achter een proxy draaien. Banners kunnen aangepast zijn. Het
+resultaat bevestigt niet het besturingssysteem van de fysieke host en geeft geen
+exacte OS-versie. Vooral telefoons, printers en apparaten zonder herkenbare
+services zullen vaak Onbekend blijven. Tegenstrijdige OS-aanwijzingen blijven
+zichtbaar als onzeker. Het lokaal uitgelezen OS vormt de uitzondering op deze
+netwerkinschatting.
+
+Via **Apparaat bewerken** zie je de gebruikte aanwijzing en de laatste OS-controle
+in UTC. De velden `os_guess`, `os_evidence` en `os_checked` gaan ook mee in CSV.
+De bestaande database wordt automatisch uitgebreid. Vertrouwde apparaten,
+namen, offlinebewaking en instellingen blijven behouden.
+
+Onder **Instellingen & triggers → OS-herkenning** kun je de functie uitschakelen.
+Ze staat standaard aan. Als poortcontrole aan staat, worden alleen de relevante
+bevestigd open poorten benaderd. Anders worden de vier bannerpoorten rechtstreeks
+geprobeerd. Per verbinding geldt de ingestelde poorttimeout (standaard 0,8 seconde),
+met een totale deadline en maximaal 4096 ontvangen bytes. Maximaal 16 hosts worden
+parallel onderzocht. Dit kan scans langer maken.
+
+Bij offline/gemiste hosts verschijnt `Laatste:` voor het vorige resultaat.
+Bij uitschakelen van OS-herkenning blijven oude resultaten staan; het tijdstip in
+Apparaat bewerken verandert dan niet. Een IP-wijziging zonder nieuwe OS-controle
+wist de eerdere indicatie. Een nieuwe controle zonder aanwijzing wordt Onbekend,
+zodat een oude gok niet als nieuwe detectie wordt hergebruikt.
+
+Start met `python3 networkwatch.py`; bovenaan staat NetworkWatch 1.4.
+Bij handmatig bijwerken moet ook het nieuwe bestand `osdetect.py` worden meegenomen.
+De gegevensmap blijft `~/.local/share/netwerkwacht`.
+
+Validatie: 41 tests geslaagd, inclusief herkenning, tegenstrijdige aanwijzingen,
+geen gok op basis van generieke diensten, een lokale SSH-testserver, HTTP-header-
+selectie, opslag en IP-wijzigingen. De GUI is niet interactief getest op een
+Linux-desktop; jouw netwerk is niet gescand.
+
+Achtergrond bij het verschil tussen service- en host-OS:
+https://nmap.org/book/vscan-fileformat.html
