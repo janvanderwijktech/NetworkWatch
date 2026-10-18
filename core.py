@@ -17,6 +17,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from ports import scan_ports
+from osdetect import detect_hosts
 
 
 def now():
@@ -29,7 +30,7 @@ def default_config():
                         'name': '{name}', 'message': '{message}', 'event_id': '{event_id}'}}
     return {'profile': 'Mijn netwerk', 'interface': '', 'network': '', 'interval': 300,
             'misses': 3, 'gateway_guard': True, 'dns': True, 'sound': True,
-            'port_scan': True, 'udp_scan': True, 'port_timeout': 0.8,
+            'port_scan': True, 'udp_scan': True, 'port_timeout': 0.8, 'os_scan': True,
             'unknown': dict(trigger), 'offline': dict(trigger)}
 
 
@@ -163,6 +164,11 @@ def scan(c):
         checked = now()
         for row in rows:
             row['port_checked'] = checked
+    if c.get('os_scan', True):
+        detect_hosts(rows, c, source_ip=before['ip'])
+        checked = now()
+        for row in rows:
+            row['os_checked'] = checked
     if local() != before:
         raise RuntimeError('Verbinding gewijzigd tijdens controle; scan genegeerd.')
     return rows
@@ -187,7 +193,7 @@ class Store:
         ''')
         # Additieve migratie: bestaande apparaten en vertrouwensstatus blijven staan.
         columns = {r[1] for r in self.db.execute('PRAGMA table_info(hosts)')}
-        for column in ('port_results', 'port_checked'):
+        for column in ('port_results', 'port_checked', 'os_guess', 'os_evidence', 'os_checked'):
             if column not in columns:
                 self.db.execute(f"ALTER TABLE hosts ADD COLUMN {column} TEXT DEFAULT ''")
         self.db.commit()
@@ -240,6 +246,12 @@ class Store:
                                     (h['port_results'], h['port_checked'], s, h['mac']))
                 elif old and old['ip'] != h['ip']:
                     self.db.execute("UPDATE hosts SET port_results='',port_checked='' WHERE scope=? AND mac=?",
+                                    (s, h['mac']))
+                if 'os_guess' in h:
+                    self.db.execute('UPDATE hosts SET os_guess=?,os_evidence=?,os_checked=? WHERE scope=? AND mac=?',
+                                    (h['os_guess'], h['os_evidence'], h['os_checked'], s, h['mac']))
+                elif old and old['ip'] != h['ip']:
+                    self.db.execute("UPDATE hosts SET os_guess='',os_evidence='',os_checked='' WHERE scope=? AND mac=?",
                                     (s, h['mac']))
             for mac, h in existing.items():
                 if mac in seen:
