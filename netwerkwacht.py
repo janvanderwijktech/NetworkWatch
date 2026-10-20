@@ -21,6 +21,45 @@ from core import (Store, Dispatcher, default_config, interfaces, now, post,
                   save_config, scan, scope, validate_config, validate_trigger)
 
 
+class ScrollableSettingsPage(ttk.Frame):
+    """Keep settings accessible when the display is smaller than the form."""
+
+    def __init__(self, parent, padding=16):
+        super().__init__(parent)
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+        self.canvas = tk.Canvas(self, width=1, height=1, highlightthickness=0)
+        vertical = ttk.Scrollbar(self, orient='vertical', command=self.canvas.yview)
+        horizontal = ttk.Scrollbar(self, orient='horizontal', command=self.canvas.xview)
+        self.canvas.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
+        self.canvas.grid(row=0, column=0, sticky='nsew')
+        vertical.grid(row=0, column=1, sticky='ns')
+        horizontal.grid(row=1, column=0, sticky='ew')
+        self.body = ttk.Frame(self.canvas, padding=padding)
+        self.body_id = self.canvas.create_window(0, 0, anchor='nw', window=self.body)
+        self.body.bind('<Configure>', self._resize)
+        self.canvas.bind('<Configure>', self._resize)
+
+    def _resize(self, _event=None):
+        width = max(self.canvas.winfo_width(), self.body.winfo_reqwidth())
+        if int(float(self.canvas.itemcget(self.body_id, 'width'))) != width:
+            self.canvas.itemconfigure(self.body_id, width=width)
+        self.canvas.configure(scrollregion=self.canvas.bbox('all'))
+
+    def reveal(self, widget):
+        if not str(widget).startswith(str(self.body) + '.'):
+            return
+        top = widget.winfo_rooty() - self.body.winfo_rooty()
+        bottom = top + widget.winfo_height()
+        visible_top = self.canvas.canvasy(0)
+        height = self.canvas.winfo_height()
+        total = max(1, self.body.winfo_height())
+        if top < visible_top:
+            self.canvas.yview_moveto(max(0, top - 8) / total)
+        elif bottom > visible_top + height:
+            self.canvas.yview_moveto(max(0, bottom - height + 8) / total)
+
+
 class App(tk.Tk):
     def __init__(self, folder):
         super().__init__()
@@ -459,13 +498,50 @@ class App(tk.Tk):
         self.settings_open = True
         win.bind('<Destroy>', lambda e: setattr(self, 'settings_open', False) if e.widget is win else None)
         win.title('Netwerk en HTTP-triggers')
-        win.geometry('820x740')
+        width = min(820, max(1, win.winfo_screenwidth() - 80))
+        height = min(740, max(1, win.winfo_screenheight() - 140))
+        win.geometry(f'{width}x{height}')
+        win.minsize(min(360, width), min(260, height))
         win.transient(self)
         win.grab_set()
+        # Reserve the footer before allocating space to the notebook.
+        footer = ttk.Frame(win, padding=(12, 8, 12, 12))
+        footer.pack(side='bottom', fill='x')
         tabs = ttk.Notebook(win)
-        tabs.pack(fill='both', expand=True, padx=12, pady=12)
-        base = ttk.Frame(tabs, padding=16)
-        tabs.add(base, text='Netwerk')
+        tabs.pack(side='top', fill='both', expand=True, padx=12, pady=(12, 0))
+        tabs.enable_traversal()
+
+        def add_page(title, padding=16):
+            page = ScrollableSettingsPage(tabs, padding=padding)
+            tabs.add(page, text=title)
+            return page.body
+
+        def scroll(event):
+            if isinstance(event.widget, tk.Text) or not tabs.select():
+                return
+            page = win.nametowidget(tabs.select())
+            if page.body.winfo_height() <= page.canvas.winfo_height():
+                return
+            if event.num == 4:
+                direction = -1
+            elif event.num == 5:
+                direction = 1
+            elif event.delta:
+                direction = -1 if event.delta > 0 else 1
+            else:
+                return
+            page.canvas.yview_scroll(direction * 3, 'units')
+            return 'break'
+
+        def reveal_focus(event):
+            if tabs.select():
+                win.nametowidget(tabs.select()).reveal(event.widget)
+
+        for sequence in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
+            win.bind(sequence, scroll)
+        win.bind('<FocusIn>', reveal_focus)
+        win.bind('<Escape>', lambda _event: win.destroy())
+        base = add_page('Netwerk')
         fields = {}
         for row, (key, label) in enumerate([('profile', 'Netwerkprofiel (aparte vertrouwenslijst)'),
                 ('interface', 'Interface'), ('network', 'IPv4-subnet (CIDR)'),
@@ -496,8 +572,7 @@ class App(tk.Tk):
             'Instellingen worden na Opslaan gebruikt; klik daarna op Scan nu.\n\n'
             'Een ARP-scan duurt meestal enkele seconden. Apparaten in slaapstand kunnen offline lijken. '
             'De gatewaycontrole voorkomt veel valse offline-meldingen bij verbindingsproblemen.').grid(row=10, column=0, columnspan=2, pady=20)
-        ports_page = ttk.Frame(tabs, padding=16)
-        tabs.add(ports_page, text='Poortcontrole')
+        ports_page = add_page('Poortcontrole')
         for key, label in [('port_scan', 'Controleer de gevonden hosts op TCP-poorten'),
                            ('udp_scan', 'Controleer daarbij ook UDP-poorten')]:
             fields[key] = tk.BooleanVar(value=self.config.get(key, True))
@@ -515,8 +590,7 @@ class App(tk.Tk):
             'Servicenamen zijn gebruikelijke poortnamen, geen vastgestelde software.\n\n'
             'Poortdetails toont de status van elke gecontroleerde poort. Bestaande resultaten blijven '
             'zichtbaar met hun tijdstip als je poortcontrole uitschakelt.').pack(anchor='w', pady=20)
-        os_page = ttk.Frame(tabs, padding=16)
-        tabs.add(os_page, text='OS-herkenning')
+        os_page = add_page('OS-herkenning')
         fields['os_scan'] = tk.BooleanVar(value=self.config.get('os_scan', True))
         ttk.Checkbutton(os_page, text='Probeer het besturingssysteem te herkennen',
                         variable=fields['os_scan']).pack(anchor='w', pady=8)
@@ -536,8 +610,7 @@ class App(tk.Tk):
             'eerdere resultaten bewaard met hun oude tijdstip.').pack(anchor='w', pady=12)
         trigger_widgets = {}
         for key, label in [('unknown', 'Onbekend apparaat'), ('offline', 'Bekend apparaat offline')]:
-            page = ttk.Frame(tabs, padding=14)
-            tabs.add(page, text=label)
+            page = add_page(label, padding=14)
             t = self.config[key]
             enabled = tk.BooleanVar(value=t['enabled'])
             ttk.Checkbutton(page, text='HTTP-POST-trigger inschakelen', variable=enabled).pack(anchor='w')
@@ -596,8 +669,8 @@ class App(tk.Tk):
                 win.destroy()
             except Exception as e:
                 messagebox.showerror('Instellingen', str(e), parent=win)
-        ttk.Button(win, text='Opslaan', command=save).pack(side='right', padx=16, pady=(0, 12))
-        ttk.Button(win, text='Annuleren', command=win.destroy).pack(side='right', pady=(0, 12))
+        ttk.Button(footer, text='Opslaan', command=save).pack(side='right', padx=(8, 0))
+        ttk.Button(footer, text='Annuleren', command=win.destroy).pack(side='right')
 
     def export(self):
         filename = filedialog.asksaveasfilename(defaultextension='.csv', initialfile='netwerkwacht-apparaten.csv',
