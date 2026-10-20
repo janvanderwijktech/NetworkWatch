@@ -1,4 +1,4 @@
-# NetworkWatch 1.5 — Python netwerkmonitor voor Linux
+# NetworkWatch 1.6 — Python netwerkmonitor voor Linux
 
 Een zelfstandige, GUI-gebaseerde toepassing geïnspireerd door SoftPerfect WiFi Guard,
 met eigen broncode en eigen interface. Geen SoftPerfect-code of -assets.
@@ -6,9 +6,10 @@ met eigen broncode en eigen interface. Geen SoftPerfect-code of -assets.
 ## Wat zit erin?
 
 - ARP-discovery op de gekozen bekabelde of draadloze Linux-interface.
+- IP-scan via ping/TCP voor bereikbare subnetten achter een router, ook vanuit Chromebook Linux.
 - Ook hosts vinden die ICMP/ping blokkeren, zolang ze op hetzelfde lokale netwerk via ARP bereikbaar zijn.
 - IP-adres, MAC-adres, hostnaam, fabrikant, eigen naam, laatste waarneming en online-status.
-- Apparaten expliciet als vertrouwd markeren; identificatie op MAC-adres, niet op IP-adres.
+- Apparaten expliciet als vertrouwd markeren: op MAC-adres in ARP-modus, op IP-adres in IP-modus.
 - Apart aanvinken welke vertrouwde apparaten altijd online horen te zijn.
 - Handmatig scannen of automatisch, met countdown en pauzeknop.
 - Sorteren, zoeken, filteren, CSV-export, gebeurtenisgeschiedenis en optionele desktopmelding.
@@ -25,7 +26,8 @@ Een HTTP-workflow kan desgewenst e-mail of andere meldingen verzorgen.
 
 ## Vereisten
 
-Linux, Python 3.10+, Tkinter, iproute2, arp-scan 1.10+ (met libcap-ondersteuning).
+Linux, Python 3.10+, Tkinter en iproute2. ARP-modus vereist arp-scan 1.10+
+(met libcap-ondersteuning); IP-modus vereist ping (iputils), zonder ARP-capabilities.
 Geen pip-pakketten nodig. De Python-standaardbibliotheek verzorgt GUI, database en HTTP.
 `getent` wordt gebruikt voor optionele hostnaamresolutie. `notify-send` wordt gebruikt
 als het beschikbaar is; anders blijven geluid, titel en gebeurtenissen beschikbaar.
@@ -34,17 +36,18 @@ als het beschikbaar is; anders blijven geluid, titel en gebeurtenissen beschikba
 
 ```bash
 sudo apt update
-sudo apt install python3 python3-tk arp-scan iproute2 libcap2-bin libnotify-bin
+sudo apt install python3 python3-tk arp-scan iproute2 iputils-ping libcap2-bin libnotify-bin
 ```
 
 ### Arch / Omarchy
 
 ```bash
-sudo pacman -S --needed python tk arp-scan iproute2 libcap libnotify
+sudo pacman -S --needed python tk arp-scan iproute2 iputils libcap libnotify
 ```
 
 ### Eenmalig toestemming voor ARP-pakketten
 
+Deze stap is alleen nodig voor ARP-modus; IP-modus gebruikt geen arp-scan.
 Controleer of het pakket de capability al heeft ingesteld:
 
 ```bash
@@ -73,7 +76,8 @@ python3 netwerkwacht.py
 Bij de eerste start opent Instellingen:
 
 1. Geef het netwerk een eigen profielnaam, bijvoorbeeld `Thuis`.
-2. Selecteer de juiste interface in de keuzelijst. Interface en CIDR-subnet worden ingevuld.
+2. Voor ARP: selecteer de juiste interface in de keuzelijst. Interface en CIDR-subnet worden ingevuld.
+   Voor Chromebook/IP-modus: volg de instructies onder **Chromebook en gerouteerde subnetten**.
 3. Laat gatewaycontrole eerst aan staan.
 4. Stel bijvoorbeeld interval `60` en gemiste scans `3` in.
 5. Sla op en klik **Scan nu**.
@@ -91,6 +95,58 @@ Voorbeeld: met 60 seconden interval en drie gemiste scans wordt een NAS na circa
 2–3 minuten plus scantijd als offline beschouwd. Het interval telt vanaf het einde
 van de vorige scan. Smartphones in slaapstand zijn meestal geen goede kandidaten
 voor altijd-aan-bewaking.
+
+## Chromebook en gerouteerde subnetten
+
+ChromeOS Linux heeft doorgaans een virtuele interface, bijvoorbeeld `eth0` met
+`100.115.92.26/30`. Een ARP-scan blijft binnen dat virtuele netwerk.
+IP-modus gebruikt gewone uitgaande ping/TCP-verbindingen naar het doelnetwerk.
+
+Voor een Chromebook dat verbonden is met je thuisnetwerk:
+
+1. Open **Instellingen & triggers → Netwerk**.
+2. Kies scanmodus **ip**.
+3. Laat interface op **eth0** staan, of kies de interface waarlangs het subnet bereikbaar is.
+4. Vul bij IPv4-subnet **192.168.2.0/24** in. Het IP-adres van de interface hoeft niet in dit subnet te liggen.
+5. Laat gateway/controlehostcontrole aan staan en vul controlehost **192.168.2.1** in.
+   Kies een altijd bereikbaar apparaat binnen het doelnetwerk.
+6. Kies eventueel een eigen profielnaam, zoals `Thuis via Chromebook`.
+7. Klik **Opslaan** en **Scan nu**. De knoppen blijven in de vaste onderbalk zichtbaar.
+
+De Linux-omgeving moet het subnet al kunnen bereiken, bijvoorbeeld `ping -c 3 192.168.2.1`.
+NetworkWatch maakt geen VPN, routes of bridge aan en omzeilt geen firewall.
+Voor alleen IP-modus volstaat op Debian/Crostini:
+
+```bash
+sudo apt install python3 python3-tk iproute2 iputils-ping
+python3 networkwatch.py
+```
+
+Detectie doet per adres eerst één ping en daarna zo nodig TCP-controles op
+22, 80, 443, 445, 3389, 8080, 21, 23, 53, 5900 en 8443.
+Een geaccepteerde verbinding én een TCP-weigering tellen als bereikbaarheidsantwoord.
+Een weigering is geen open poort; de afzonderlijke poortcontrole rapporteert dit correct.
+Een tussenliggende firewall kan namens een doel een weigering sturen. Antwoorden
+zijn daarom bereikbaarheidsindicaties, geen gegarandeerde apparaatidentificatie.
+Hosts die ping blokkeren en op geen van deze TCP-probes antwoorden blijven onzichtbaar.
+Bij veel niet-reagerende adressen duurt een scan langer; /20 kan vele minuten kosten.
+Maximaal 32 hosts worden tegelijk onderzocht; er zijn geen extra pip-pakketten nodig.
+
+De route, interface en controlehost worden gecontroleerd voordat resultaten worden
+opgeslagen. Een ontbrekende controlehost of een veranderde verbinding verwerpt de
+hele scan, zonder nieuwe online/offline-statussen of meldingen. Uitschakelen van
+de controle kan bij verbindingsverlies tot valse offline-meldingen leiden.
+Ook met controlehost betekent geen antwoord van een individuele host slechts dat
+de gekozen probes geen antwoord kregen, bijvoorbeeld door slaapstand of filtering.
+
+**Herkenning op IP-adres:** MAC en fabrikant blijven onbekend, ook in webhooks en CSV.
+Gebruik vaste DHCP-toewijzingen voor vertrouwde en bewaakte apparaten.
+Als een ander apparaat hetzelfde IP krijgt, erft het die herkenning.
+Een gewijzigd IP wordt als een nieuwe identiteit behandeld.
+ARP- en IP-modus hebben aparte apparatenlijsten, zodat bestaande MAC-herkenning behouden blijft.
+Intern gebruikt IP-modus de sleutel `ip:<adres>` in het bestaande databaseveld `mac`;
+de GUI toont dit als onbekend MAC en externe MAC-velden blijven leeg.
+CSV bevat daarnaast `device_id`; webhooks ondersteunen `{device_id}`.
 
 ## HTTP-triggers instellen
 
@@ -155,7 +211,8 @@ De app zet dit om naar `application/x-www-form-urlencoded`, vergelijkbaar met
 Beschikbare invulvelden:
 
 - `{event}`: `unknown` of `offline`.
-- `{ip}`, `{mac}`, `{hostname}`, `{vendor}`.
+- `{ip}`, `{mac}`, `{hostname}`, `{vendor}`. In IP-modus zijn MAC en fabrikant leeg.
+- `{device_id}`: MAC-adres in ARP-modus, `ip:<adres>` in IP-modus.
 - `{name}`: eigen naam, anders hostnaam, anders IP-adres.
 - `{message}`: leesbare Nederlandse melding.
 - `{timestamp}`: UTC-tijdstip in ISO 8601.
@@ -174,7 +231,7 @@ teruggeven. De app interpreteert zulke dienstspecifieke responsebodies niet.
 
 ### Wanneer wordt een trigger verstuurd?
 
-- Onbekend: bij eerste waarneming van een MAC-adres in dit profiel, en opnieuw
+- Onbekend: bij eerste waarneming van een identiteit (MAC in ARP-modus, IP in IP-modus) in dit profiel, en opnieuw
   als een nog steeds onbekend apparaat terugkomt nadat het als offline gold.
 - Bekend offline: alleen bij de overgang van online naar offline, na het ingestelde
   aantal gemiste **succesvolle** scans, én als vertrouwd plus offlinebewaking aan staan.
@@ -182,7 +239,9 @@ teruggeven. De app interpreteert zulke dienstspecifieke responsebodies niet.
 - Na terugkeer naar online kan een volgende uitval opnieuw een melding geven.
 - Zet je bewaking pas aan bij een apparaat dat al offline is, dan volgt geen
   retrospectieve melding: het moet eerst weer online zijn gezien.
-- Veranderende IP-adressen behouden bij hetzelfde MAC-adres de vertrouwde status.
+- Alleen in ARP-modus behouden veranderende IP-adressen bij hetzelfde MAC-adres de vertrouwde status.
+- IP-modus heeft een aparte vertrouwenslijst. Een ander apparaat op een eerder vertrouwd IP
+  wordt als hetzelfde apparaat behandeld; gebruik vaste DHCP-toewijzingen.
 - Foute, afgebroken of niet-verbonden scans wijzigen geen aanwezigheidsstatussen.
 
 De HTTP-wachtrij probeert maximaal vier keer: direct, daarna na circa 10, 30 en 90
@@ -202,13 +261,14 @@ HTTP is ook toegestaan voor lokale endpoints; daarbij is het verkeer onversleute
 
 ## Netwerkgedrag en beperkingen
 
-ARP werkt op het **direct aangesloten IPv4-netwerk**. Deze app scant geen andere
-VLANs via een router, geen IPv6 en geen netwerk achter client isolation.
-De gekozen range moet bij de interface horen en het eigen IP bevatten.
+ARP-modus werkt op het **direct aangesloten IPv4-netwerk**. ARP scant geen andere
+VLANs via een router. De gekozen range moet bij de interface horen en het eigen IP bevatten.
+IP-modus kan via de bestaande routes andere IPv4-subnetten onderzoeken, zolang firewall
+of client isolation dit toestaan. Beide modi scannen geen IPv6.
 De maximale range is /20 (4096 adressen); /24 is een gebruikelijke keuze.
 Dit inventariseert alle bereikbare LAN-apparaten, dus ook bekabelde apparaten.
 
-De gatewaycontrole verlangt dat een default gateway binnen het gekozen subnet
+In ARP-modus verlangt de gatewaycontrole dat een default gateway binnen het gekozen subnet
 ook in de scan voorkomt. Zo worden veel massale valse offline-alarmen vermeden.
 Bij een netwerk zonder gateway kun je de controle uitschakelen, maar dan kan
 verbindingsverlies eerder als uitval van apparaten worden geïnterpreteerd.
@@ -281,20 +341,24 @@ profiel, ongeacht het actieve zoekfilter, maar geen webhooktokens.
 python3 -m unittest discover -s tests -v
 ```
 
-De meegeleverde 52 tests controleren onder andere MAC-identiteit bij IP-wijziging,
+De tests controleren onder andere MAC-identiteit bij IP-wijziging,
 herstart met opgeslagen staat, offline-drempel, herhaalde meldingen, netwerkprofielen,
 scanvalidatie, gatewaycontrole, transactie-rollback en HTTP-verzoeken naar een lokale
 testserver (JSON, form, redirects, outbox en herpoging).
 
 Bij oplevering: alle 52 tests geslaagd en Python-bestanden gecompileerd.
-ARP-scans zijn in tests gesimuleerd; er is niet op jouw netwerk gescand.
+ARP- en IP-discovery zijn in tests gesimuleerd; er is niet op jouw netwerk gescand.
+De nieuwe IP-tests controleren routewijzigingen, de controlehost, ping/TCP-detectie,
+IP-identiteit, gescheiden profielen en lege MAC-velden in webhooks.
+GitHub Actions voert syntaxcontrole en de unittest-suite uit; bekijk de actuele uitslag bij de pull request.
 De grafische interface is in deze bouwomgeving niet interactief getest omdat er
 geen grafische displayserver beschikbaar is. Test de eerste keer op jouw Linux-desktop.
 
 ## Bestanden
 
 - `netwerkwacht.py`: GUI, scanplanning, apparaatbeheer, export en instellingen.
-- `core.py`: ARP-scanner, netwerkcontrole, SQLite-statusmachine en HTTP-outbox.
+- `core.py`: scanorkestratie, ARP-scanner, netwerkcontrole, SQLite-statusmachine en HTTP-outbox.
+- `ipscan.py`: gerouteerde IPv4-discovery met ping/TCP en controlehost.
 - `install_launcher.py`: optionele applicatiemenu- en autostartlauncher.
 - `tests/test_core.py`: regressietests zonder echte netwerkscan.
 - `README.md`: deze Nederlandse handleiding.
@@ -337,7 +401,7 @@ NetwerkWacht, dan draait een oude kopie of verwijst de launcher nog naar die kop
 
 ## Update 1.3: TCP- en UDP-poortoverzicht
 
-Na ARP-discovery worden de gevonden IPv4-hosts gecontroleerd op de aangevraagde
+Na ARP- of IP-discovery worden de gevonden IPv4-hosts gecontroleerd op de aangevraagde
 poorten. Dit staat standaard aan, ook bij bestaande configuraties. Er zijn geen
 extra pakketten of extra rootrechten nodig voor deze controle.
 
@@ -505,3 +569,17 @@ Validatie: 52 tests geslaagd, inclusief poortselectie, argumentopbouw, ontbreken
 clients, SSH-annulering en het rechtsklikmenu. Tijdens tests zijn geen browsers,
 terminals of verbindingen naar jouw apparaten gestart. De daadwerkelijke GUI en
 externe clients moeten op jouw desktop worden getest.
+
+
+## Update 1.6: IP-scan vanuit Chromebook Linux
+
+Nieuwe scanmodus `ip` voor gerouteerde IPv4-netwerken, met aparte IP-identiteiten
+en instelbare controlehost. Poortcontrole, OS-indicaties, apparaatnamen, vertrouwd-
+markering, offlinebewaking en rechtsklikacties werken ook met IP-discovery.
+ARP blijft standaard voor bestaande configuraties. De scrollbare instellingen en
+vaste knoppenbalk uit de Chromebook-oplossing blijven aanwezig.
+
+Sluit de app af voordat je de branch bijwerkt. Start met `python3 networkwatch.py`.
+Deze versie bevat ook het nieuwe bestand `ipscan.py`; haal dus de hele wijziging op.
+De nieuwe tests gebruiken uitsluitend gesimuleerde discovery. Een praktijktest in
+Crostini blijft nodig om de bereikbaarheid en volledigheid op jouw LAN te beoordelen.
