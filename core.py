@@ -17,6 +17,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from ports import scan_ports
+from ipscan import discover as discover_ip, verify_connection
 from osdetect import detect_hosts
 
 
@@ -30,6 +31,7 @@ def default_config():
                         'name': '{name}', 'message': '{message}', 'event_id': '{event_id}'}}
     return {'profile': 'Mijn netwerk', 'interface': '', 'network': '', 'interval': 300,
             'misses': 3, 'gateway_guard': True, 'dns': True, 'sound': True,
+            'scan_mode': 'arp', 'guard_host': '',
             'port_scan': True, 'udp_scan': True, 'port_timeout': 0.8, 'os_scan': True,
             'unknown': dict(trigger), 'offline': dict(trigger)}
 
@@ -76,11 +78,20 @@ def validate_trigger(t):
 
 
 def validate_config(c):
+    if c.get('scan_mode', 'arp') not in ('arp', 'ip'):
+        raise ValueError('Kies scanmodus arp of ip.')
     if not c['profile'].strip() or not c['interface'].strip():
         raise ValueError('Vul een profielnaam en netwerkinterface in.')
     net = ipaddress.ip_network(c['network'], strict=True)
     if net.version != 4 or net.num_addresses > 4096:
         raise ValueError('Kies een IPv4-subnet van maximaal 4096 adressen (/20 of kleiner).')
+    if c.get('scan_mode', 'arp') == 'ip' and c['gateway_guard']:
+        try:
+            guard = ipaddress.IPv4Address(c.get('guard_host', '').strip())
+        except ValueError:
+            raise ValueError('Vul bij IP-scan een controlehost in, bijvoorbeeld het IP-adres van je router.')
+        if guard not in net:
+            raise ValueError('De controlehost moet binnen het te scannen subnet liggen.')
     if c['interval'] != 0 and not 15 <= c['interval'] <= 86400:
         raise ValueError('Scaninterval: 0 (handmatig), of 15 t/m 86400 seconden.')
     if not 1 <= c['misses'] <= 100:
@@ -92,7 +103,17 @@ def validate_config(c):
 
 
 def scope(c):
-    return json.dumps([c['profile'], c['interface'], c['network']], ensure_ascii=False)
+    parts = [c['profile'], c['interface'], c['network']]
+    # Bestaande ARP-profielen behouden hun scope en vertrouwenslijst.
+    if c.get('scan_mode', 'arp') == 'ip':
+        parts.append('ip')
+    return json.dumps(parts, ensure_ascii=False)
+
+
+def mac_address(host):
+    """Leeg voor een IP-identiteit; presenteer de opslagsleutel nooit als MAC."""
+    value = host.get('mac', '')
+    return '' if value.startswith('ip:') else value
 
 
 def save_config(path, config):
@@ -115,8 +136,17 @@ def parse_arp(output, network):
 
 
 def scan(c):
-    """Only successful, connected, complete ARP scans may change presence state."""
+    """Alleen volledige scans met een stabiele verbinding wijzigen de status."""
     validate_config(c)
+    if c.get('scan_mode', 'arp') == 'ip':
+        rows, before, route_before = discover_ip(c, interfaces, run)
+        enrich(rows, c, before['ip'])
+        verify_connection(c, before, route_before, interfaces, run)
+        return rows
+    return scan_arp(c)
+
+
+def scan_arp(c):
     binary = shutil.which('arp-scan')
     if not binary:
         raise RuntimeError('arp-scan ontbreekt. Zie README.md voor installatie.')
@@ -147,6 +177,13 @@ def scan(c):
     rows = [r for r in rows if r['mac'] != before['mac']]
     rows.append({'ip': before['ip'], 'mac': before['mac'], 'vendor': 'Deze computer',
                  'hostname': os.uname().nodename})
+    enrich(rows, c, before['ip'])
+    if local() != before:
+        raise RuntimeError('Verbinding gewijzigd tijdens controle; scan genegeerd.')
+    return rows
+
+
+def enrich(rows, c, source_ip):
     if c['dns']:
         def resolve(row):
             if row['hostname']:
@@ -160,18 +197,15 @@ def scan(c):
         with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
             list(pool.map(resolve, rows))
     if c.get('port_scan', True):
-        scan_ports(rows, c, source_ip=before['ip'])
+        scan_ports(rows, c, source_ip=source_ip)
         checked = now()
         for row in rows:
             row['port_checked'] = checked
     if c.get('os_scan', True):
-        detect_hosts(rows, c, source_ip=before['ip'])
+        detect_hosts(rows, c, source_ip=source_ip)
         checked = now()
         for row in rows:
             row['os_checked'] = checked
-    if local() != before:
-        raise RuntimeError('Verbinding gewijzigd tijdens controle; scan genegeerd.')
-    return rows
 
 
 class Store:
@@ -209,12 +243,14 @@ class Store:
     def add_event(self, s, kind, h, config, stamp):
         eid = str(uuid.uuid4())
         name = h.get('label') or h.get('hostname') or h['ip']
-        message = (f'Onbekend apparaat gevonden: {name} ({h["ip"]}, {h["mac"]})' if kind == 'unknown'
-                   else f'Bekend apparaat offline: {name} ({h["ip"]}, {h["mac"]})')
+        address = h['ip'] + (', ' + mac_address(h) if mac_address(h) else '')
+        message = (f'Onbekend apparaat gevonden: {name} ({address})' if kind == 'unknown'
+                   else f'Bekend apparaat offline: {name} ({address})')
         self.db.execute('INSERT INTO events VALUES (?,?,?,?,?,?)',
                         (eid, stamp, s, kind, h['mac'], message))
         payload = {'event_id': eid, 'event': kind, 'timestamp': stamp, 'ip': h['ip'],
-                   'mac': h['mac'], 'name': name, 'hostname': h.get('hostname', ''),
+                   'mac': mac_address(h), 'device_id': h['mac'],
+                   'name': name, 'hostname': h.get('hostname', ''),
                    'vendor': h.get('vendor', ''), 'message': message,
                    'profile': config['profile'], 'network': config['network']}
         t = config[kind]

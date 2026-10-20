@@ -18,7 +18,7 @@ from host_actions import available_actions, launch_action
 from ports import TCP_PORTS, UDP_PORTS, decode_results, port_summary
 
 from core import (Store, Dispatcher, default_config, interfaces, now, post,
-                  save_config, scan, scope, validate_config, validate_trigger)
+                  save_config, scan, scope, validate_config, validate_trigger, mac_address)
 
 
 class ScrollableSettingsPage(ttk.Frame):
@@ -63,7 +63,7 @@ class ScrollableSettingsPage(ttk.Frame):
 class App(tk.Tk):
     def __init__(self, folder):
         super().__init__()
-        self.title('NetworkWatch 1.5 • Linux netwerkmonitor')
+        self.title('NetworkWatch 1.6 • Linux netwerkmonitor')
         self.geometry('1250x760')
         self.minsize(900, 550)
         self.folder = folder
@@ -104,7 +104,7 @@ class App(tk.Tk):
         style.configure('Title.TLabel', font=('Sans', 23, 'bold'))
         outer = ttk.Frame(self, padding=18)
         outer.pack(fill='both', expand=True)
-        ttk.Label(outer, text='NetworkWatch 1.5', style='Title.TLabel').pack(anchor='w')
+        ttk.Label(outer, text='NetworkWatch 1.6', style='Title.TLabel').pack(anchor='w')
         self.summary = tk.StringVar()
         ttk.Label(outer, textvariable=self.summary).pack(anchor='w', pady=(4, 14))
         bar = ttk.Frame(outer)
@@ -314,7 +314,7 @@ class App(tk.Tk):
         online = sum(h['online'] for h in hosts)
         unknown = sum(not h['known'] for h in hosts)
         self.summary.set(f"{self.config['profile']}  •  {self.config['interface'] or 'Geen interface'}  •  "
-                         f"{self.config['network']}    |    {online} online    {unknown} onbekend    {len(hosts)} opgeslagen")
+                         f"{self.config['network']}  •  {self.config.get('scan_mode', 'arp').upper()}    |    {online} online    {unknown} onbekend    {len(hosts)} opgeslagen")
         selected = self.tree.selection()
         self.tree.delete(*self.tree.get_children())
         def key(h):
@@ -341,7 +341,7 @@ class App(tk.Tk):
                 image=self.known_images[bool(h['known'])], values=(state,
                 'Ja' if h['monitor'] else 'Nee', h['ip'],
                 ('Laatste: ' if h['os_checked'] and (not h['online'] or h['misses']) else '')
-                + (h['os_guess'] or 'Nog niet gecontroleerd'), opened, uncertain, h['port_checked'], h['mac'],
+                + (h['os_guess'] or 'Nog niet gecontroleerd'), opened, uncertain, h['port_checked'], mac_address(h) or 'Onbekend (IP-scan)',
                 h['label'], h['hostname'], h['vendor'], h['last_seen']))
         if selected and self.tree.exists(selected[0]):
             self.tree.selection_set(selected)
@@ -369,7 +369,8 @@ class App(tk.Tk):
         self.scan_button.state(['disabled'])
         self.settings_button.state(['disabled'])
         self.progress.start(12)
-        self.status.set('Netwerkscan bezig: ARP-detectie, hostnamen en (indien aan) TCP/UDP-poortcontrole en OS-herkenning…')
+        method = 'Ping/TCP-detectie' if self.config.get('scan_mode', 'arp') == 'ip' else 'ARP-detectie'
+        self.status.set(f'Netwerkscan bezig: {method}, hostnamen en (indien aan) poortcontrole en OS-herkenning…')
         config = json.loads(json.dumps(self.config))
         def worker():
             try:
@@ -399,7 +400,7 @@ class App(tk.Tk):
                         if alerts and self.config['sound']:
                             self.bell()
                         if alerts:
-                            self.title(f'({len(alerts)} meldingen) NetworkWatch 1.5')
+                            self.title(f'({len(alerts)} meldingen) NetworkWatch 1.6')
                             if shutil.which('notify-send'):
                                 def notify(text='\n'.join(alerts[:5])):
                                     try:
@@ -438,7 +439,7 @@ class App(tk.Tk):
         win = tk.Toplevel(self)
         win.title(f"Poortdetails — {h['label'] or h['hostname'] or h['ip']}")
         win.geometry('850x590')
-        ttk.Label(win, padding=12, text=f"{h['ip']}  •  {h['mac']}\nLaatste poortcheck (UTC): "
+        ttk.Label(win, padding=12, text=f"{h['ip']}  •  {mac_address(h) or 'MAC onbekend (IP-scan)'}\nLaatste poortcheck (UTC): "
             + (h['port_checked'] or 'Nog niet gecontroleerd')
             + '\nDit zijn meetresultaten op dat tijdstip; servicebenamingen zijn indicatief.').pack(anchor='w')
         frame = ttk.Frame(win, padding=12)
@@ -470,10 +471,13 @@ class App(tk.Tk):
         win.grab_set()
         form = ttk.Frame(win, padding=20)
         form.pack(fill='both', expand=True)
-        ttk.Label(form, text=f"{h['ip']}   •   {h['mac']}\n{h['hostname']}\n{h['vendor']}").pack(anchor='w')
+        ttk.Label(form, text=f"{h['ip']}   •   {mac_address(h) or 'MAC onbekend (IP-scan)'}\n{h['hostname']}\n{h['vendor']}").pack(anchor='w')
         ttk.Label(form, wraplength=560, text=f"Vermoedelijk OS: {h['os_guess'] or 'Nog niet gecontroleerd'}\n"
             f"Controle (UTC): {h['os_checked'] or '—'}\n{h['os_evidence']}\n"
             'Netwerkindicaties kunnen ook van een container of proxy afkomstig zijn.').pack(anchor='w', pady=10)
+        if self.config.get('scan_mode', 'arp') == 'ip':
+            ttk.Label(form, wraplength=560, text='Herkenning op IP-adres: gebruik vaste DHCP-toewijzingen. '
+                      'Een ander apparaat op hetzelfde IP behoudt de vertrouwde status.').pack(anchor='w', pady=6)
         ttk.Label(form, text='Eigen naam / opmerking:').pack(anchor='w', pady=(14, 3))
         label = tk.StringVar(value=h['label'])
         ttk.Entry(form, textvariable=label, width=50).pack(fill='x')
@@ -550,28 +554,45 @@ class App(tk.Tk):
             ttk.Label(base, text=label).grid(row=row, column=0, sticky='w', pady=7)
             fields[key] = tk.StringVar(value=str(self.config[key]))
             ttk.Entry(base, textvariable=fields[key], width=32).grid(row=row, column=1, sticky='ew', padx=10)
+        fields['scan_mode'] = tk.StringVar(value=self.config.get('scan_mode', 'arp'))
+        ttk.Label(base, text='Scanmodus (arp = lokaal, ip = via router / Chromebook)').grid(
+            row=5, column=0, sticky='w', pady=7)
+        ttk.Combobox(base, state='readonly', textvariable=fields['scan_mode'], values=('arp', 'ip'),
+                     width=32).grid(row=5, column=1, sticky='ew', padx=10)
         try:
             choices = interfaces()
         except Exception as e:
             choices = []
-            ttk.Label(base, text=f'Interfaces ophalen mislukt: {e}', wraplength=650).grid(row=5, column=0, columnspan=2)
+            ttk.Label(base, text=f'Interfaces ophalen mislukt: {e}', wraplength=650).grid(row=6, column=0, columnspan=2)
         selection = ttk.Combobox(base, state='readonly', width=60,
             values=[f"{x['interface']} • {x['ip']} • {x['network']}" for x in choices])
-        selection.grid(row=6, column=0, columnspan=2, pady=14, sticky='ew')
+        selection.grid(row=7, column=0, columnspan=2, pady=14, sticky='ew')
         def choose(_):
             x = choices[selection.current()]
             fields['interface'].set(x['interface'])
-            fields['network'].set(x['network'])
+            # IP-modus gebruikt de interface als uitgaande verbinding; behoud het doelnetwerk.
+            if fields['scan_mode'].get() == 'arp':
+                fields['network'].set(x['network'])
         selection.bind('<<ComboboxSelected>>', choose)
-        for row, (key, label) in enumerate([('gateway_guard', 'Negeer scan als de gateway niet wordt gezien (aanbevolen)'),
-                ('dns', 'Hostnamen opzoeken (kan scan vertragen)'), ('sound', 'Geluid bij nieuwe melding')], start=7):
+        for row, (key, label) in enumerate([('gateway_guard', 'Controleer gateway (ARP) / controlehost (IP) voor statuswijzigingen'),
+                ('dns', 'Hostnamen opzoeken (kan scan vertragen)'), ('sound', 'Geluid bij nieuwe melding')], start=8):
             fields[key] = tk.BooleanVar(value=self.config[key])
             ttk.Checkbutton(base, text=label, variable=fields[key]).grid(row=row, column=0, columnspan=2, sticky='w', pady=7)
-        ttk.Label(base, wraplength=700, text='Alleen het direct aangesloten IPv4-netwerk wordt gescand (maximaal /20). '
-            'Kies een andere profielnaam voor een ander netwerk, ook als het dezelfde IP-reeks heeft. '
-            'Instellingen worden na Opslaan gebruikt; klik daarna op Scan nu.\n\n'
-            'Een ARP-scan duurt meestal enkele seconden. Apparaten in slaapstand kunnen offline lijken. '
-            'De gatewaycontrole voorkomt veel valse offline-meldingen bij verbindingsproblemen.').grid(row=10, column=0, columnspan=2, pady=20)
+        fields['guard_host'] = tk.StringVar(value=self.config.get('guard_host', ''))
+        ttk.Label(base, text='Controlehost IP-modus (bijv. router 192.168.2.1)').grid(
+            row=11, column=0, sticky='w', pady=7)
+        ttk.Entry(base, textvariable=fields['guard_host'], width=32).grid(
+            row=11, column=1, sticky='ew', padx=10)
+        ttk.Label(base, wraplength=700, text='ARP: direct aangesloten IPv4-netwerk met MAC-herkenning. '
+            'IP: een bereikbaar IPv4-subnet via ping en TCP, bijvoorbeeld 192.168.2.0/24 vanuit een Chromebook. '
+            'Selecteer de uitgaande interface en vul het doelnetwerk zelf in (maximaal /20).\n\n'
+            'IP-modus herkent apparaten op hun IP-adres. MAC en fabrikant blijven onbekend; '
+            'gebruik vaste DHCP-toewijzingen. Apparaten die alle probes blokkeren worden niet gevonden. '
+            'Een gemiste scan betekent niet altijd dat een apparaat uit staat.\n\n'
+            'Bij IP-modus controleert de aangevinkte gatewaycontrole de ingevulde controlehost binnen het doelnetwerk. '
+            'Is die onbereikbaar, dan blijven apparaatstatussen ongewijzigd. '
+            'IP-scans kunnen enkele minuten duren. Elke modus heeft een eigen vertrouwenslijst. '
+            'Sla op en klik op Scan nu.').grid(row=12, column=0, columnspan=2, pady=20)
         ports_page = add_page('Poortcontrole')
         for key, label in [('port_scan', 'Controleer de gevonden hosts op TCP-poorten'),
                            ('udp_scan', 'Controleer daarbij ook UDP-poorten')]:
@@ -628,7 +649,7 @@ class App(tk.Tk):
             body = tk.Text(page, height=11, wrap='word')
             body.insert('1.0', json.dumps(t['body'], indent=2, ensure_ascii=False))
             body.pack(fill='both', expand=True)
-            ttk.Label(page, wraplength=720, text='Velden: {event}, {ip}, {mac}, {name}, {hostname}, {vendor}, {message}, '
+            ttk.Label(page, wraplength=720, text='Velden: {event}, {ip}, {mac}, {device_id}, {name}, {hostname}, {vendor}, {message}, '
                 '{timestamp}, {event_id}, {network}, {profile}. Tokens staan lokaal in config.json; deel dit bestand niet.').pack(anchor='w', pady=8)
             trigger_widgets[key] = (enabled, url, mode, headers, body)
             ttk.Button(page, text='Verstuur echte test-POST', command=lambda k=key: test(k)).pack(anchor='e')
@@ -647,7 +668,9 @@ class App(tk.Tk):
                 messagebox.showerror('Trigger', str(e), parent=win)
                 return
             payload = {'event_id': str(uuid.uuid4()), 'event': key, 'ip': '192.0.2.123',
-                'mac': '02:00:00:00:00:01', 'name': 'TEST apparaat', 'hostname': 'test-host',
+                'mac': '' if fields['scan_mode'].get() == 'ip' else '02:00:00:00:00:01',
+                'device_id': 'ip:192.0.2.123' if fields['scan_mode'].get() == 'ip' else '02:00:00:00:00:01',
+                'name': 'TEST apparaat', 'hostname': 'test-host',
                 'vendor': 'TEST', 'message': f'TEST: {key}', 'timestamp': now(),
                 'network': fields['network'].get(), 'profile': fields['profile'].get()}
             def work():
@@ -682,6 +705,8 @@ class App(tk.Tk):
             messagebox.showinfo('Export', 'Nog geen apparaten om te exporteren.')
             return
         for h in hosts:
+            h['device_id'] = h['mac']
+            h['mac'] = mac_address(h)
             h['open_ports'], h['udp_uncertain'] = port_summary(h['port_results'])
         def safe(v):
             return "'" + v if isinstance(v, str) and v.startswith(('=', '+', '-', '@', '\t', '\r')) else v
