@@ -1,5 +1,26 @@
 # NetworkWatch 1.6 — Python netwerkmonitor voor Linux
 
+### Instellingen op Omarchy / Hyprland
+
+De tabbladen in **Instellingen & triggers** reageren rechtstreeks op een muisklik.
+Je kunt ook **Ctrl+Tab** en **Ctrl+Shift+Tab** gebruiken om te wisselen.
+Het venster wordt volledig opgebouwd en zichtbaar gemaakt voordat het de invoer
+vastlegt, zodat de tabbladen en velden klaarstaan wanneer het venster actief wordt.
+
+Onderaan staat **Annuleren (Esc)** links en **Opslaan** rechts. Annuleren, Escape of
+het sluiten van het venster verwerpt wijzigingen, ook als een HTTP-trigger nog
+ongeldige JSON bevat. Alleen Opslaan schrijft de instellingen naar schijf.
+Het openen van de instellingen terwijl het venster al open is activeert datzelfde
+venster. Beide knoppen blijven zichtbaar wanneer je het venster kleiner maakt.
+
+GitHub Actions test de echte Tk-vensters via Xvfb, inclusief muisklikken op alle
+tabbladen, annuleren, Escape, opslaan en de zichtbaarheid van de knoppen.
+
+Ook **Apparaat bewerken** (via de knop of het rechtsklikmenu) heeft onderaan
+**Annuleren (Esc)** links en **Opslaan** rechts. Annuleren, Escape of het sluiten
+van dat venster verwerpt wijzigingen aan de eigen naam, vertrouwd-status en
+offlinebewaking. Alleen Opslaan bewaart deze wijzigingen.
+
 Een zelfstandige, GUI-gebaseerde toepassing geïnspireerd door SoftPerfect WiFi Guard,
 met eigen broncode en eigen interface. Geen SoftPerfect-code of -assets.
 
@@ -346,13 +367,20 @@ herstart met opgeslagen staat, offline-drempel, herhaalde meldingen, netwerkprof
 scanvalidatie, gatewaycontrole, transactie-rollback en HTTP-verzoeken naar een lokale
 testserver (JSON, form, redirects, outbox en herpoging).
 
-Bij oplevering: alle 52 tests geslaagd en Python-bestanden gecompileerd.
 ARP- en IP-discovery zijn in tests gesimuleerd; er is niet op jouw netwerk gescand.
 De nieuwe IP-tests controleren routewijzigingen, de controlehost, ping/TCP-detectie,
 IP-identiteit, gescheiden profielen en lege MAC-velden in webhooks.
 GitHub Actions voert syntaxcontrole en de unittest-suite uit; bekijk de actuele uitslag bij de pull request.
-De grafische interface is in deze bouwomgeving niet interactief getest omdat er
-geen grafische displayserver beschikbaar is. Test de eerste keer op jouw Linux-desktop.
+De instellingen worden in GitHub Actions met echte Tk-widgets op een virtueel
+X-scherm getest. Lokaal zonder display worden deze venstertests overgeslagen.
+Met Xvfb geïnstalleerd voer je ook de venstertests uit via:
+
+```bash
+xvfb-run -a python3 -m unittest discover -s tests -v
+```
+
+Een virtueel X-scherm test niet alle details van Hyprland/XWayland op Omarchy.
+Controleer daarom ook op jouw desktop of de tabbladen en knoppen reageren.
 
 ## Bestanden
 
@@ -583,3 +611,4 @@ Sluit de app af voordat je de branch bijwerkt. Start met `python3 networkwatch.p
 Deze versie bevat ook het nieuwe bestand `ipscan.py`; haal dus de hele wijziging op.
 De nieuwe tests gebruiken uitsluitend gesimuleerde discovery. Een praktijktest in
 Crostini blijft nodig om de bereikbaarheid en volledigheid op jouw LAN te beoordelen.
+
