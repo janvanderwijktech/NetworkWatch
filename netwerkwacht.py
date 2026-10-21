@@ -21,6 +21,25 @@ from core import (Store, Dispatcher, default_config, interfaces, now, post,
                   save_config, scan, scope, validate_config, validate_trigger, mac_address)
 
 
+class SettingsNotebook(ttk.Notebook):
+    """Select tabs directly instead of depending only on theme class bindings."""
+
+    def __init__(self, parent):
+        super().__init__(parent, takefocus=True)
+        self.bind('<Button-1>', self._click_tab)
+
+    def _click_tab(self, event):
+        try:
+            index = self.index(f'@{event.x},{event.y}')
+        except tk.TclError:
+            return
+        if self.instate(['disabled']) or self.tab(index, 'state') == 'disabled':
+            return 'break'
+        self.select(index)
+        self.focus_set()
+        return 'break'
+
+
 class ScrollableSettingsPage(ttk.Frame):
     """Keep settings accessible when the display is smaller than the form."""
 
@@ -498,20 +517,43 @@ class App(tk.Tk):
     def settings(self):
         if self.busy:
             return
-        win = tk.Toplevel(self)
+        existing = getattr(self, 'settings_window', None)
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            existing.focus_set()
+            return
+        win = tk.Toplevel(self, name='settings')
+        win.withdraw()
+        self.settings_window = win
         self.settings_open = True
-        win.bind('<Destroy>', lambda e: setattr(self, 'settings_open', False) if e.widget is win else None)
+
+        def closed(event):
+            if event.widget is win:
+                self.settings_open = False
+                self.settings_window = None
+
+        def cancel(_event=None):
+            win.destroy()
+            self.focus_set()
+            return 'break'
+
+        win.bind('<Destroy>', closed)
+        win.protocol('WM_DELETE_WINDOW', cancel)
         win.title('Netwerk en HTTP-triggers')
         width = min(820, max(1, win.winfo_screenwidth() - 80))
         height = min(740, max(1, win.winfo_screenheight() - 140))
-        win.geometry(f'{width}x{height}')
+        x = max(0, min(self.winfo_rootx() + (self.winfo_width() - width) // 2,
+                       win.winfo_screenwidth() - width))
+        y = max(0, min(self.winfo_rooty() + (self.winfo_height() - height) // 2,
+                       win.winfo_screenheight() - height))
+        win.geometry(f'{width}x{height}+{x}+{y}')
         win.minsize(min(360, width), min(260, height))
-        win.transient(self)
-        win.grab_set()
+        if self.winfo_viewable():
+            win.transient(self)
         # Reserve the footer before allocating space to the notebook.
-        footer = ttk.Frame(win, padding=(12, 8, 12, 12))
+        footer = ttk.Frame(win, name='actions', padding=(12, 8, 12, 12))
         footer.pack(side='bottom', fill='x')
-        tabs = ttk.Notebook(win)
+        tabs = SettingsNotebook(win)
         tabs.pack(side='top', fill='both', expand=True, padx=12, pady=(12, 0))
         tabs.enable_traversal()
 
@@ -544,7 +586,7 @@ class App(tk.Tk):
         for sequence in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
             win.bind(sequence, scroll)
         win.bind('<FocusIn>', reveal_focus)
-        win.bind('<Escape>', lambda _event: win.destroy())
+        win.bind('<Escape>', cancel)
         base = add_page('Netwerk')
         fields = {}
         for row, (key, label) in enumerate([('profile', 'Netwerkprofiel (aparte vertrouwenslijst)'),
@@ -692,8 +734,19 @@ class App(tk.Tk):
                 win.destroy()
             except Exception as e:
                 messagebox.showerror('Instellingen', str(e), parent=win)
-        ttk.Button(footer, text='Opslaan', command=save).pack(side='right', padx=(8, 0))
-        ttk.Button(footer, text='Annuleren', command=win.destroy).pack(side='right')
+        ttk.Button(footer, name='cancel', text='Annuleren (Esc)', command=cancel).pack(side='left')
+        ttk.Button(footer, name='save', text='Opslaan', command=save).pack(side='right', padx=(8, 0))
+        # XWayland window managers must see the complete dialog before it grabs
+        # input. This follows tkinter.simpledialog's visibility-before-grab order.
+        win.deiconify()
+        try:
+            win.wait_visibility()
+            win.grab_set()
+            tabs.focus_set()
+        except tk.TclError:
+            if win.winfo_exists():
+                win.destroy()
+            raise
 
     def export(self):
         filename = filedialog.asksaveasfilename(defaultextension='.csv', initialfile='netwerkwacht-apparaten.csv',
@@ -748,3 +801,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

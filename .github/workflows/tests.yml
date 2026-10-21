@@ -10,11 +10,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Install Tkinter for GUI callback tests
+      - name: Install Tkinter and a virtual display for GUI tests
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y python3-tk
+          sudo apt-get install -y python3-tk xvfb xauth
       - name: Check Python syntax
         run: python3 -m compileall -q core.py ipscan.py netwerkwacht.py networkwatch.py ports.py osdetect.py host_actions.py tests
       - name: Run tests (no LAN scanning)
-        run: python3 -m unittest discover -s tests -v
+        run: xvfb-run -a -s "-screen 0 1280x800x24" python3 -m unittest discover -s tests -v
+
