@@ -16,6 +16,11 @@ venster. Beide knoppen blijven zichtbaar wanneer je het venster kleiner maakt.
 GitHub Actions test de echte Tk-vensters via Xvfb, inclusief muisklikken op alle
 tabbladen, annuleren, Escape, opslaan en de zichtbaarheid van de knoppen.
 
+Ook **Apparaat bewerken** (via de knop of het rechtsklikmenu) heeft onderaan
+**Annuleren (Esc)** links en **Opslaan** rechts. Annuleren, Escape of het sluiten
+van dat venster verwerpt wijzigingen aan de eigen naam, vertrouwd-status en
+offlinebewaking. Alleen Opslaan bewaart deze wijzigingen.
+
 Een zelfstandige, GUI-gebaseerde toepassing geïnspireerd door SoftPerfect WiFi Guard,
 met eigen broncode en eigen interface. Geen SoftPerfect-code of -assets.
 

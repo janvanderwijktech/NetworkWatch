@@ -486,6 +486,14 @@ class App(tk.Tk):
         h = next(h for h in self.store.hosts(scope(self.config)) if h['mac'] == selected[0])
         win = tk.Toplevel(self)
         win.title('Apparaat herkennen en bewaken')
+
+        def cancel(_event=None):
+            win.destroy()
+            self.focus_set()
+            return 'break'
+
+        win.bind('<Escape>', cancel)
+        win.protocol('WM_DELETE_WINDOW', cancel)
         win.transient(self)
         win.grab_set()
         form = ttk.Frame(win, padding=20)
@@ -512,7 +520,10 @@ class App(tk.Tk):
             self.store.edit(scope(self.config), h['mac'], label.get(), known.get(), monitor.get())
             self.refresh()
             win.destroy()
-        ttk.Button(form, text='Opslaan', command=save).pack(anchor='e')
+        actions = ttk.Frame(form)
+        actions.pack(fill='x', pady=(10, 0))
+        ttk.Button(actions, text='Annuleren (Esc)', command=cancel).pack(side='left')
+        ttk.Button(actions, text='Opslaan', command=save).pack(side='right')
 
     def settings(self):
         if self.busy:
