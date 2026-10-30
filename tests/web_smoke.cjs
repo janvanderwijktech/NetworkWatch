@@ -85,6 +85,7 @@ async function startDemo(token = '') {
 
     // Alle instellingen-tabs, geldige JSON, demo-POST en annuleren van settings.
     await page.locator('#settings-button').click();
+    await page.locator('#settings-dialog').waitFor();
     for (const name of ['ports','os','unknown','offline','network']) {
       await page.locator('#tab-' + name).click();
       assert.equal(await page.locator('#settings-' + name).isVisible(), true);
@@ -92,6 +93,7 @@ async function startDemo(token = '') {
     await page.locator('#cfg-profile').fill('NIET BEWAREN');
     await page.locator('#settings-dialog').getByRole('button', {name:'Annuleren (Esc)', exact:true}).click();
     await page.locator('#settings-button').click();
+    await page.locator('#settings-dialog').waitFor();
     assert.equal(await page.locator('#cfg-profile').inputValue(), 'Voorbeeldnetwerk');
     await page.locator('#tab-unknown').click();
     await page.locator('#unknown-url').fill('https://example.invalid/test');
