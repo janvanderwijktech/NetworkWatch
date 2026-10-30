@@ -1,5 +1,132 @@
 # NetworkWatch 1.6 — Python netwerkmonitor voor Linux
 
+## Nieuw: bediening in je webbrowser
+
+Start de nieuwe webeditie op een Linux-computer en open het dashboard in je browser.
+De webeditie hergebruikt de bestaande scanner, SQLite-apparatenlijst en HTTP-outbox.
+Python 3.10+ is voldoende voor de webservice zelf; er zijn geen pip-pakketten nodig.
+Tkinter is alleen nodig voor de desktopapp en de bestaande desktoptests.
+
+```bash
+python3 webwatch.py
+```
+
+Open daarna **http://127.0.0.1:8765**. Sluit de desktopapp eerst af: beide gebruiken
+standaard dezelfde gegevensmap en dezelfde lock, zodat er één bewakingsproces actief is.
+Sluit je alleen de browsertab, dan blijft de server scannen en triggers versturen.
+**Ctrl+C** in de serverterminal stopt de bewaking. Voor automatisch starten kun je
+deze opdracht vanuit je eigen Linux-sessie of service starten.
+
+Wil je eerst de hele interface met voorbeeldgegevens bekijken?
+
+```bash
+python3 webwatch.py --demo
+```
+
+Demo gebruikt een tijdelijke gegevensmap en benadert geen netwerkapparaten,
+webhooks of desktopclients. Instellingen en wijzigingen in demo verdwijnen na stoppen.
+
+### Beschikbare bediening
+
+- Apparatenoverzicht met zoeken, filters, sorteren en direct aanvinken van Bekend.
+- Status, IP, MAC/fabrikant, eigen naam, hostnaam, poorten en OS-indicaties.
+- Apparaat bewerken, offlinebewaking, Annuleren en Escape zonder opslaan.
+- Rechtsklikmenu, poortdetails met tijdstip en alle gemeten protocol/poort-combinaties.
+- ARP- en IP-scanmodus, interface/subnet, interval, pauze, countdown en handmatige scan.
+- Dezelfde vijf instellingencategorieën, aparte HTTP-triggers en echte test-POST-knoppen.
+- Gebeurtenissen met HTTP-bezorgstatus en CSV-export van het volledige profiel.
+- Optionele browsermeldingen en geluid na klikken op **Meldingen aanzetten**.
+- Een indeling voor brede en kleine schermen; de knoppen van vensters blijven onderaan.
+
+De scanner draait op de **Linux-server**, niet op het apparaat met de browser.
+Een server op je fysieke LAN kan dus ARP/MAC-detectie doen voor dat LAN, ook als je
+de resultaten vanaf een Chromebook bekijkt. Draait de server zelf in Crostini,
+dan blijven de bestaande ARP-beperkingen gelden en gebruik je IP-modus voor je LAN.
+Instellingen en apparaten blijven op de server opgeslagen; de browser bewaart
+geen kopie van webhooktokens in localStorage.
+
+### Verbindingen vanuit het rechtsklikmenu
+
+HTTP/HTTPS-links openen op de computer met de browser. SSH, Telnet, FTP, SMB en VNC
+hebben een kopieerbaar commando of adres. De webeditie bevat geen ingebouwde
+webterminal. Wil je dezelfde desktopclients als in de desktopapp starten, gebruik
+dan op de grafische Linux-computer:
+
+```bash
+python3 webwatch.py --allow-local-actions
+```
+
+**Start op Linux-server** start dan een client op die computer. Op een headless server
+gebruik je het gekopieerde commando met een client op je eigen computer.
+De benodigde clients en terminal moeten op de betreffende computer geïnstalleerd zijn.
+Acties worden uitsluitend aangeboden bij bevestigde open poorten; ook een eerdere
+meting van een inmiddels offline host kan nog een actie aanbieden.
+
+### Vanaf een andere computer bekijken
+
+Standaard luistert de server alleen op loopback. Een eenvoudige versleutelde route
+is SSH-portforwarding. Start de webservice op je server en voer op je laptop uit:
+
+```bash
+ssh -N -L 8765:127.0.0.1:8765 jan@192.168.2.25
+```
+
+Open op de laptop **http://127.0.0.1:8765**. Vervang gebruikersnaam en serveradres
+door je eigen waarden. Er wordt gescand vanaf de server waarop webwatch.py draait.
+
+Voor rechtstreekse toegang op je vertrouwde LAN kan de server op zijn LAN-IP luisteren.
+Daarvoor verlangt de webservice een toegangscode van minimaal 32 tekens. Bijvoorbeeld:
+
+```bash
+read -rsp 'Kies een toegangscode van minimaal 32 tekens: ' NETWORKWATCH_WEB_TOKEN
+export NETWORKWATCH_WEB_TOKEN
+python3 webwatch.py --host 192.168.2.25
+```
+
+Open dan **http://192.168.2.25:8765** en vul de code in. HTTP op het LAN versleutelt
+deze code en de gegevens niet; gebruik de SSH-route voor een versleutelde verbinding.
+De service is bedoeld voor persoonlijk/lokaal gebruik, niet voor directe publicatie
+op internet. Bij `--host 0.0.0.0` is bovendien `--allowed-host 192.168.2.25` nodig.
+Een expliciete DNS-naam kan ook via `--allowed-host` worden toegestaan.
+
+De webservice heeft een eigen sessiecookie (HttpOnly/SameSite), controleert het
+Host/Origin-adres, vereist een CSRF-token voor wijzigingen en leest alleen de drie
+vaste frontendbestanden. API-responses worden niet gecachet. HTML in apparaatnamen
+wordt als tekst getoond. Deze maatregelen voegen geen gebruikersrollen of TLS-server toe.
+
+Een afwijkende gegevensmap en poort zijn optioneel:
+
+```bash
+python3 webwatch.py --data-dir ~/.local/share/networkwatch-web-test --port 8766
+```
+
+Deze map heeft een eigen configuratie en apparatenlijst. De bestaande desktopmap is
+standaard `~/.local/share/netwerkwacht`, of `$XDG_DATA_HOME/netwerkwacht`.
+Benodigde Linux-hulpmiddelen en ARP-rechten staan verderop bij **Vereisten**.
+
+### De webeditie testen
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+De nieuwe webtests gebruiken echte HTTP-verzoeken op loopback en SQLite met
+gesimuleerde discovery. Ze controleren onder andere aanmelding, CSRF/Host/Origin,
+scanconflicten, mislukte scans zonder statuswijzigingen, instellingen, apparaatbeheer,
+poortacties, CSV en demo zonder echte POST-verzoeken.
+
+Optioneel, alleen voor ontwikkeling: browsertests met Playwright/Chromium.
+Deze tools zijn niet nodig om de webapp te gebruiken.
+
+```bash
+npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+npx playwright install chromium
+node tests/web_smoke.cjs
+```
+
+GitHub Actions voert de Python-suite en browsertests uit. De browsertests controleren
+de volledige bediening met geïsoleerde demogegevens en bewaren screenshots als artifact.
+
 Een zelfstandige, GUI-gebaseerde toepassing geïnspireerd door SoftPerfect WiFi Guard,
 met eigen broncode en eigen interface. Geen SoftPerfect-code of -assets.
 
@@ -583,3 +710,4 @@ Sluit de app af voordat je de branch bijwerkt. Start met `python3 networkwatch.p
 Deze versie bevat ook het nieuwe bestand `ipscan.py`; haal dus de hele wijziging op.
 De nieuwe tests gebruiken uitsluitend gesimuleerde discovery. Een praktijktest in
 Crostini blijft nodig om de bereikbaarheid en volledigheid op jouw LAN te beoordelen.
+

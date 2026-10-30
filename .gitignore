@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Browser-testtools en gegenereerde schermafbeeldingen
+node_modules/
+test-artifacts/
+

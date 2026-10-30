@@ -1,0 +1,29 @@
+name: Web browser tests
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Python and JavaScript syntax
+        run: |
+          python3 -m py_compile webwatch.py
+          node --check web/app.js
+      - name: Install browser test tools
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts playwright@1.62.1
+          npx playwright install --with-deps chromium
+      - name: Exercise the browser UI with isolated demo data
+        run: node tests/web_smoke.cjs
+      - name: Keep browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-screenshots
+          path: test-artifacts/
+          if-no-files-found: ignore
