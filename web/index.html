@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#132b36">
+  <title>NetworkWatch · Netwerkoverzicht</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div id="login-screen" class="login-screen" hidden>
+    <form id="login-form" class="login-card">
+      <div class="brand-icon" aria-hidden="true">N</div>
+      <h1>NetworkWatch</h1><p>Voer de toegangscode van je Linux-server in.</p>
+      <label>Toegangscode<input id="login-token" type="password" autocomplete="current-password" required></label>
+      <p id="login-error" class="error" role="alert"></p>
+      <button class="button primary" type="submit">Open mijn netwerk</button>
+    </form>
+  </div>
+  <div id="app" class="app-shell" hidden>
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="NetworkWatch startpagina"><span class="brand-icon">N</span><span>NetworkWatch<small>NETWERKMONITOR</small></span></a>
+      <div class="sidebar-label">WERKRUIMTE</div>
+      <nav aria-label="Hoofdnavigatie">
+        <button class="nav-button active" data-view="devices"><span aria-hidden="true">▦</span> Apparaten <b id="nav-count">0</b></button>
+        <button class="nav-button" data-view="events"><span aria-hidden="true">≡</span> Gebeurtenissen</button>
+        <button class="nav-button" id="settings-sidebar"><span aria-hidden="true">⚙</span> Instellingen & triggers</button>
+      </nav>
+      <div class="sidebar-bottom"><span class="live-dot"></span> <span id="server-label">Verbonden met scanner</span><p>Webeditie · Linux scanner</p><button id="logout-button" class="text-button" hidden>Afmelden</button></div>
+    </aside>
+    <main>
+      <header class="topbar"><div class="breadcrumb">Werkruimte <span>/</span> <strong id="breadcrumb-page">Apparaten</strong></div><button id="notifications" class="button quiet" title="Schakel browsermeldingen en geluid in">Meldingen aanzetten</button></header>
+      <div class="content">
+        <div id="demo-banner" class="demo-banner" hidden>Demomodus · Dit zijn voorbeeldgegevens. Er worden geen netwerkscans of HTTP-POST-verzoeken verstuurd.</div>
+        <section class="page-heading"><div><div class="eyebrow">ZICHT OP JE NETWERK</div><h1 id="page-title">Je netwerk, in beeld.</h1><p id="network-label">Stel je netwerk in om apparaten te vinden.</p></div><div class="toolbar"><button id="settings-button" class="button">Instellingen & triggers</button><button id="scan-button" class="button primary"><span aria-hidden="true">↻</span> Scan nu</button></div></section>
+        <div id="connection-warning" class="connection-warning" role="alert" hidden></div>
+        <section class="metrics" aria-label="Netwerkstatistieken">
+          <div class="metric"><span>Opgeslagen apparaten</span><strong id="total-count">0</strong><small>In het huidige netwerkprofiel</small></div>
+          <div class="metric"><span><i class="dot green"></i>Online</span><strong id="online-count">0</strong><small>Gezien tijdens recente scans</small></div>
+          <div class="metric"><span><i class="dot amber"></i>Onbekend</span><strong id="unknown-count">0</strong><small>Wachten op jouw herkenning</small></div>
+          <div class="metric"><span><i class="dot gray"></i>Offline</span><strong id="offline-count">0</strong><small>Na het ingestelde aantal scans</small></div>
+        </section>
+        <section class="scan-strip"><div class="scan-indicator"><span id="scan-dot" class="live-dot"></span><span id="scan-state">Klaar voor een scan</span></div><span id="countdown">Handmatige scanmodus</span><label class="inline-check"><input id="paused" type="checkbox">Pauzeer scans</label></section>
+        <section id="devices-view" class="panel">
+          <div class="panel-heading"><div><h2>Apparaten</h2><p id="table-caption">Een vertrouwd netwerk begint met herkennen.</p></div><a class="button quiet" href="/api/export" id="export-link">↓ Exporteer CSV</a></div>
+          <div class="table-tools"><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Zoek op naam, IP, MAC of fabrikant…" aria-label="Zoek apparaten"></label><label class="sr-only" for="filter">Filter apparaten</label><select id="filter"><option value="all">Alle apparaten</option><option value="unknown">Onbekend</option><option value="online">Online</option><option value="offline">Offline</option><option value="monitor">Offlinebewaking</option></select></div>
+          <div class="table-scroll"><table id="hosts-table"><thead><tr>
+            <th><button data-sort="known">Bekend</button></th><th><button data-sort="name">Apparaat</button></th><th><button data-sort="ip">IP-adres</button></th><th><button data-sort="state">Status</button></th><th><button data-sort="os_guess">Vermoedelijk OS</button></th><th><button data-sort="open_ports">Open poorten</button></th><th><button data-sort="mac">MAC-adres / fabrikant</button></th><th><button data-sort="last_seen">Laatst gezien</button></th><th><span class="sr-only">Acties</span></th>
+          </tr></thead><tbody id="hosts-body"></tbody></table></div>
+          <div id="empty-state" class="empty-state" hidden><div aria-hidden="true">◎</div><h3 id="empty-title">Nog geen apparaten</h3><p id="empty-copy">Kies je interface en subnet in Instellingen & triggers. Start daarna een scan.</p><button class="button" id="empty-settings">Netwerk instellen</button></div>
+          <div class="table-footer"><span id="visible-count">0 apparaten</span><span>Klik op Bekend om te herkennen · Rechtsklik op een rij voor verbindingen</span></div>
+        </section>
+        <section id="events-view" class="panel" hidden><div class="panel-heading"><div><h2>Gebeurtenissen & HTTP-status</h2><p>De laatste 500 meldingen van dit netwerkprofiel.</p></div></div><div class="table-scroll"><table><thead><tr><th>Tijdstip</th><th>Gebeurtenis</th><th>Melding</th><th>HTTP-status</th></tr></thead><tbody id="events-body"></tbody></table></div><p id="events-empty" class="empty-state" hidden>Er zijn nog geen gebeurtenissen.</p></section>
+        <footer class="status-footer"><span id="status-text" role="status">Verbinden…</span><span id="updated-at"></span></footer>
+      </div>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <div id="host-menu" class="host-menu" role="menu" hidden></div>
+
+  <dialog id="settings-dialog" class="wide-dialog" aria-labelledby="settings-title">
+    <form id="settings-form">
+      <div class="dialog-header"><div><span class="eyebrow">VOORKEUREN</span><h2 id="settings-title">Instellingen & triggers</h2></div><button type="button" data-close class="close-button" aria-label="Sluiten">×</button></div>
+      <div class="settings-tabs" role="tablist" aria-label="Instellingencategorie">
+        <button type="button" role="tab" aria-selected="true" aria-controls="settings-network" id="tab-network" data-settings-tab="network">Netwerk</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="settings-ports" id="tab-ports" data-settings-tab="ports">Poortcontrole</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="settings-os" id="tab-os" data-settings-tab="os">OS-herkenning</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="settings-unknown" id="tab-unknown" data-settings-tab="unknown">Onbekend apparaat</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="settings-offline" id="tab-offline" data-settings-tab="offline">Bekend apparaat offline</button>
+      </div>
+      <div class="dialog-scroll">
+        <section role="tabpanel" aria-labelledby="tab-network" id="settings-network" class="settings-page">
+          <h3>Welk netwerk wil je bewaken?</h3><p class="muted">De Linux-computer waarop NetworkWatch draait, voert de scans uit.</p>
+          <div class="form-grid"><label>Netwerkprofiel<input id="cfg-profile" maxlength="300" required></label><label>Scanmodus<select id="cfg-scan_mode"><option value="arp">ARP · direct lokaal netwerk</option><option value="ip">IP · ping/TCP, ook via router</option></select></label><label>Interface<input id="cfg-interface" placeholder="Bijvoorbeeld eth0 of wlan0" maxlength="300" required></label><label>IPv4-subnet (CIDR)<input id="cfg-network" placeholder="192.168.2.0/24" maxlength="300" required></label><label class="span-two">Beschikbare interfaces<select id="interface-picker"><option value="">Selecteer een interface…</option></select></label><label>Scaninterval in seconden<input id="cfg-interval" type="number" min="0" max="86400" required><small>0 = handmatig, anders 15–86400 seconden.</small></label><label>Offline na gemiste scans<input id="cfg-misses" type="number" min="1" max="100" required></label><label class="span-two">Controlehost voor IP-modus<input id="cfg-guard_host" placeholder="Bijvoorbeeld je router: 192.168.2.1" maxlength="300"></label></div>
+          <label class="check-row"><input id="cfg-gateway_guard" type="checkbox">Controleer gateway (ARP) / controlehost (IP) voordat statussen veranderen</label><label class="check-row"><input id="cfg-dns" type="checkbox">Hostnamen opzoeken</label><label class="check-row"><input id="cfg-sound" type="checkbox">Geluid bij nieuwe meldingen in een browser waarin meldingen aan staan</label>
+          <p class="note">ARP herkent apparaten op MAC-adres op het direct aangesloten netwerk. IP-modus herkent op IP-adres; gebruik vaste DHCP-toewijzingen. Iedere modus en ieder profiel heeft een eigen vertrouwenslijst. Maximaal /20. Apparaten in slaapstand of achter filtering kunnen onzichtbaar blijven.</p>
+        </section>
+        <section role="tabpanel" aria-labelledby="tab-ports" id="settings-ports" class="settings-page" hidden><h3>Diensten in één overzicht</h3><label class="check-row"><input id="cfg-port_scan" type="checkbox">Controleer gevonden hosts op TCP-poorten</label><label class="check-row"><input id="cfg-udp_scan" type="checkbox">Controleer daarbij ook UDP-poorten</label><label>Timeout per poort (seconden)<input id="cfg-port_timeout" type="number" min="0.1" max="5" step="0.1" required></label><p class="note">Open betekent een bevestigde verbinding of een UDP-antwoord. Geen UDP-antwoord blijft onzeker. Dezelfde poortlijst en meetmethode als de desktopapp worden gebruikt. Met veel apparaten en timeouts kan een scan minuten duren. Bij apparaten zie je via Poortdetails alle metingen en hun tijdstip.</p></section>
+        <section role="tabpanel" aria-labelledby="tab-os" id="settings-os" class="settings-page" hidden><h3>Een indicatie van het besturingssysteem</h3><label class="check-row"><input id="cfg-os_scan" type="checkbox">Probeer het besturingssysteem te herkennen</label><p class="note">Herkenning gebruikt SSH- en FTP-banners en HTTP-serverheaders. Zonder expliciete aanwijzing blijft het OS onbekend. Een proxy of container kan een ander OS tonen dan de fysieke host. Via Apparaat bewerken zie je de aanwijzingen en de laatste controle.</p></section>
+        <section role="tabpanel" aria-labelledby="tab-unknown" id="settings-unknown" class="settings-page trigger-page" hidden><h3>Onbekend apparaat gevonden</h3><div id="trigger-unknown"></div></section>
+        <section role="tabpanel" aria-labelledby="tab-offline" id="settings-offline" class="settings-page trigger-page" hidden><h3>Bekend apparaat offline</h3><div id="trigger-offline"></div></section>
+        <p id="settings-error" class="error" role="alert"></p>
+      </div>
+      <div class="dialog-actions"><button type="button" data-close class="button">Annuleren (Esc)</button><button type="submit" class="button primary" id="settings-save">Instellingen opslaan</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="edit-dialog" aria-labelledby="edit-title"><form id="edit-form"><div class="dialog-header"><div><span class="eyebrow">APPARAATBEHEER</span><h2 id="edit-title">Apparaat bewerken</h2></div><button type="button" data-close class="close-button" aria-label="Sluiten">×</button></div><div class="dialog-scroll"><p id="edit-address" class="mono"></p><p id="edit-vendor" class="muted"></p><label>Eigen naam / opmerking<input id="edit-label" maxlength="1000"></label><label class="check-row"><input id="edit-known" type="checkbox">Ik herken dit apparaat (vertrouwd)</label><label class="check-row"><input id="edit-monitor" type="checkbox">Waarschuw als dit bekende apparaat offline gaat</label><p id="edit-ip-note" class="note" hidden>IP-herkenning: een ander apparaat op hetzelfde IP erft deze herkenning. Gebruik vaste DHCP-toewijzingen.</p><div class="os-evidence"><h3>Vermoedelijk OS</h3><strong id="edit-os"></strong><p id="edit-evidence"></p><small id="edit-os-time"></small></div><p id="edit-error" class="error" role="alert"></p></div><div class="dialog-actions"><button type="button" data-close class="button">Annuleren (Esc)</button><button type="submit" class="button primary" id="edit-save">Opslaan</button></div></form></dialog>
+
+  <dialog id="ports-dialog" class="wide-dialog" aria-labelledby="ports-title"><div class="dialog-header"><div><span class="eyebrow">LAATSTE METING</span><h2 id="ports-title">Poortdetails</h2><p id="ports-address" class="muted"></p></div><button type="button" data-close class="close-button" aria-label="Sluiten">×</button></div><div class="dialog-scroll"><p id="ports-time" class="note"></p><div class="table-scroll"><table><thead><tr><th>Poort</th><th>Protocol</th><th>Status</th><th>Toelichting</th></tr></thead><tbody id="ports-body"></tbody></table></div><p id="ports-empty" hidden>Nog geen poortmeting beschikbaar.</p></div><div class="dialog-actions"><button type="button" data-close class="button">Sluiten</button></div></dialog>
+
+  <dialog id="action-dialog" aria-labelledby="action-title"><form id="action-form"><div class="dialog-header"><h2 id="action-title">Verbinding starten</h2><button type="button" data-close class="close-button" aria-label="Sluiten">×</button></div><div class="dialog-scroll"><p id="action-target" class="mono"></p><label id="action-user-label">SSH-gebruikersnaam (optioneel)<input id="action-user" maxlength="128" autocomplete="off"></label><label>Commando / adres<input id="action-command" class="mono" readonly></label><p class="note">Een webbrowser opent geen ingebouwde SSH- of Telnet-terminal. Kopieer het commando naar je eigen terminal, of start een desktopclient op de Linux-server als dat daar is ingeschakeld.</p><p id="action-error" class="error" role="alert"></p></div><div class="dialog-actions"><button type="button" data-close class="button">Annuleren</button><button type="button" id="copy-command" class="button">Kopieer commando</button><button type="submit" id="launch-action" class="button primary">Start op Linux-server</button></div></form></dialog>
+</body>
+</html>
