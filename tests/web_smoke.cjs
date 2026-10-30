@@ -122,7 +122,10 @@ async function startDemo(token = '') {
     const box = await cancel.boundingBox();
     assert.ok(box && box.y >= 0 && box.y + box.height <= 844);
     await page.locator('#tab-offline').click();
-    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'De mobiele pagina mag niet horizontaal uitlopen.');
+    const mobileLayout = await page.evaluate(() => ({viewport: innerWidth, root: document.documentElement.scrollWidth,
+      body: document.body.getBoundingClientRect().width,
+      wide: [...document.querySelectorAll('body *')].filter(e => e.getClientRects().length && e.getBoundingClientRect().right > innerWidth + 1).slice(0, 24).map(e => ({tag:e.tagName,id:e.id,cls:e.className,w:e.getBoundingClientRect().width,right:e.getBoundingClientRect().right,overflow:getComputedStyle(e).overflowX}))}));
+    assert.ok(mobileLayout.root <= mobileLayout.viewport + 1, 'Mobiele layout: ' + JSON.stringify(mobileLayout));
     await page.screenshot({path:'test-artifacts/networkwatch-mobile.png', fullPage:true});
     await cancel.click();
 
