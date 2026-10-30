@@ -122,6 +122,7 @@ async function startDemo(token = '') {
     const box = await cancel.boundingBox();
     assert.ok(box && box.y >= 0 && box.y + box.height <= 844);
     await page.locator('#tab-offline').click();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'De mobiele pagina mag niet horizontaal uitlopen.');
     await page.screenshot({path:'test-artifacts/networkwatch-mobile.png', fullPage:true});
     await cancel.click();
 
